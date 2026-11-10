@@ -1,6 +1,6 @@
 # Quest Academy
 
-A learning game for 2nd and 3rd graders covering math, reading, writing, science, social studies and typing. Play it at **https://youngin9210.github.io/quest-academy/**
+A learning game for 2nd and 3rd graders covering math, reading, writing, science, social studies and typing. Play it at **https://learn.kmydev.com/**
 
 ## What's in it
 - **4 worlds to pick from:** Space Explorers, Ocean Adventure, Pet Rescue, Magic Bakery. Each player picks her own world and can switch any time.
@@ -21,8 +21,8 @@ Open the site in Safari, tap **Share**, then **Add to Home Screen** (on newer iP
 ## Credits
 Spelling Bee word recordings are by volunteers on Wikimedia Commons and keep their original open licenses. See [audio/CREDITS.md](audio/CREDITS.md).
 
-## Privacy
-There are no accounts and no server. Names, progress and journal entries are saved only in the browser on the device being used (`localStorage`). Each device keeps its own progress.
+## Family sync and privacy
+Each device saves progress in the browser (`localStorage`) and works offline. On learn.kmydev.com, entering the family code once on a device (Grown-ups page) syncs players across all the family's devices through a small PHP + MySQL endpoint (`api/sync.php`). Changes from different devices are merged per player (points, collectibles, journals and typing results are never lost). The database and family code live in `quest-config.php` above the public folder; see `server/quest-config.sample.php`. Deploy with `server/deploy.sh`.
 
 ## Developing
 Plain HTML, CSS and JavaScript with no build step. To run it locally:
