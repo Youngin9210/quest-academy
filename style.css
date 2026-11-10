@@ -166,6 +166,13 @@ label.lbl { display: block; font-weight: 600; margin-bottom: 8px; font-size: 1.1
 .pad .go { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 
 .hint { text-align: center; }
+.story { display: flex; gap: 12px; align-items: flex-start; text-align: left; margin-bottom: 14px; }
+.story-text { margin: 0; flex: 1; }
+.say {
+  flex: none; font-size: 1.6rem; width: 54px; height: 54px; border-radius: 50%;
+  border: 2px solid var(--card-border); background: var(--card); box-shadow: 0 3px 0 rgba(0,0,0,.18);
+}
+.say:active { transform: translateY(2px); box-shadow: none; }
 .hint .explain { font-size: 1.3rem; margin-top: 10px; }
 
 /* visuals */

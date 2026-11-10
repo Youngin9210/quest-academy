@@ -14,6 +14,7 @@ const MISSIONS = [
   { id: 'place',    grade: 2, desc: 'Hundreds, tens & ones' },
   { id: 'twodigit', grade: 2, desc: 'Add & subtract up to 100' },
   { id: 'muldiv',   grade: 3, desc: 'Times & divide facts' },
+  { id: 'story',    grade: 2, desc: 'Word problems' },
 ];
 
 /* ---------- storage ---------- */
@@ -218,6 +219,146 @@ const GENERATORS = {
   },
 };
 
+/* ---------- Word problems ---------- */
+
+// Which story types each mission mixes in. The Story mission uses all of them for the player's grade.
+const STORY_TYPES = {
+  addsub:   ['join', 'separate', 'compare', 'missing'],
+  twodigit: ['join', 'separate', 'compare', 'money'],
+  place:    ['pvbundle'],
+  muldiv:   ['groups', 'share', 'buy'],
+};
+function storyTypesFor(missionId, p) {
+  if (missionId !== 'story') return STORY_TYPES[missionId];
+  return p.grade >= 3
+    ? ['join', 'separate', 'compare', 'money', 'groups', 'share', 'buy', 'twostep', 'twostep']
+    : ['join', 'separate', 'compare', 'missing', 'money', 'pvbundle'];
+}
+function weightedPick(p, items, keyOf) {
+  const w = items.map(t => { const s = p.stats[keyOf(t)]; return s ? 8 / (s.box + 1) + (s.w > s.r ? 4 : 0) : 4; });
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < items.length; i++) { r -= w[i]; if (r <= 0) return items[i]; }
+  return items[items.length - 1];
+}
+// Is this small enough for the dot/array pictures?
+function pictureable(a, op, b) {
+  if (op === '+') return a <= 10 && b <= 10;
+  if (op === '-') return a <= 20 && b <= 10 && a - b <= 10;
+  if (op === '×') return a <= 10 && b <= 10;
+  return a <= 100 && b <= 10 && a / b <= 10;
+}
+function mathHint(a, op, b, ans, r) {
+  if (pictureable(a, op, b)) return factHint(a, op, b, r ? ans : '?');
+  const sym = op === '-' ? '−' : op;
+  return `<p class="explain" style="font-size:1.6rem"><b>${a} ${sym} ${b} = ${r ? ans : '?'}</b></p>`;
+}
+
+function makeStory(type, p, big) {
+  const S = theme(p).story, N = esc(p.name), B = S.buddy;
+  const it = S.item, gr = S.group, buy = S.buy;
+  const pl = (n, w) => `${n} ${n === 1 ? w[0] : w[1]}`;
+  // a, op, b describe the number sentence; clue explains how to spot it
+  let text, a, op, b, clue, money = false, hint;
+  switch (type) {
+    case 'join':
+      if (big) { a = rand(12, 60); b = rand(10, 99 - a); } else { a = rand(2, 10); b = rand(2, 10); }
+      op = '+';
+      text = `${N} has ${pl(a, it)}. ${B} gives ${N} ${b} more. How many ${it[1]} does ${N} have now?`;
+      clue = '“How many now” after getting more means <b>add</b>.';
+      break;
+    case 'separate':
+      if (big) { a = rand(30, 99); b = rand(10, a - 5); } else { a = rand(8, 18); b = rand(Math.max(2, a - 10), Math.min(10, a - 1)); }
+      op = '-';
+      text = `${N} had ${pl(a, it)}. ${N} gave ${b} to ${B}. How many ${it[1]} does ${N} have left?`;
+      clue = 'Giving some away means <b>subtract</b>.';
+      break;
+    case 'compare':
+      if (big) { a = rand(40, 99); b = rand(10, a - 5); } else { a = rand(8, 18); b = rand(Math.max(2, a - 10), a - 1); }
+      op = '-';
+      text = `${N} collected ${pl(a, it)}. ${B} collected ${pl(b, it)}. How many more ${it[1]} did ${N} collect than ${B}?`;
+      clue = '“How many more” means find the difference: <b>subtract</b>.';
+      break;
+    case 'missing': {
+      const start = rand(3, 10), more = rand(2, 10), c = start + more;
+      a = c; op = '-'; b = start;
+      text = `${N} has ${pl(start, it)}. ${N} finds some more and now has ${c}. How many ${it[1]} did ${N} find?`;
+      clue = `Think: ${start} + ? = ${c}. You can <b>subtract</b> to find the missing part.`;
+      break;
+    }
+    case 'money':
+      money = true;
+      if (Math.random() < .5) {
+        if (big) { a = rand(12, 50); b = rand(10, 49); } else { a = rand(3, 10); b = rand(2, 10); }
+        op = '+';
+        text = `At ${S.shop}, ${N} buys a ${buy[0]} for $${a} and a ${S.buy2} for $${b}. How much money does ${N} spend in all?`;
+        clue = 'Spending money on two things: <b>add</b> the prices.';
+      } else {
+        if (big) { a = pick([50, 60, 75, 80, 100]); b = rand(12, a - 8); } else { a = pick([10, 15, 20]); b = rand(Math.max(2, a - 10), Math.min(10, a - 1)); }
+        op = '-';
+        text = `${N} has $${a} at ${S.shop}. ${N} buys a ${buy[0]} for $${b}. How much money does ${N} have left?`;
+        clue = 'Paying for something means your money goes down: <b>subtract</b>.';
+      }
+      break;
+    case 'pvbundle': {
+      const h = rand(1, 9), t = rand(0, 9), o = rand(1, 9), n = h * 100 + t * 10 + o;
+      text = `There ${h === 1 ? 'is' : 'are'} ${h} big ${h === 1 ? 'box' : 'boxes'} with 100 ${it[1]} each, ${t} ${t === 1 ? 'bag' : 'bags'} with 10 ${it[1]} each, and ${o} loose ${o === 1 ? it[0] : it[1]}. How many ${it[1]} are there in all?`;
+      clue = 'Boxes of 100 are <b>hundreds</b>, bags of 10 are <b>tens</b>, loose ones are <b>ones</b>.';
+      return storyQ('wp-pvbundle', text, n, false, r => `<p class="explain">${clue}</p>${pvChart(n)}<p class="explain">${h} hundreds + ${t} tens + ${o} ones = <b>${r ? n : '?'}</b></p>`);
+    }
+    case 'groups':
+      a = rand(2, 10); b = rand(2, 10); op = '×';
+      text = `${N} has ${pl(a, gr)}. Each ${gr[0]} has ${pl(b, it)}. How many ${it[1]} are there in all?`;
+      clue = 'Equal groups means <b>multiply</b>: groups × how many in each.';
+      break;
+    case 'share': {
+      const groups = rand(2, 10), each = rand(2, 10);
+      a = groups * each; op = '÷'; b = groups;
+      text = `${N} has ${a} ${it[1]} and puts them into ${groups} ${gr[1]}, with the same number in each ${gr[0]}. How many ${it[1]} go in each ${gr[0]}?`;
+      clue = 'Sharing equally means <b>divide</b>.';
+      break;
+    }
+    case 'buy': {
+      const price = rand(2, 10), qty = rand(2, 10);
+      a = price * qty; op = '÷'; b = price;
+      text = `${N} goes to ${S.shop} with $${a}. Each ${buy[0]} costs $${price}. How many ${buy[1]} can ${N} buy?`;
+      clue = `How many groups of $${price} fit into $${a}? That's <b>divide</b>.`;
+      break;
+    }
+    case 'twostep': {
+      if (Math.random() < .5) {
+        const qty = rand(2, 5), price = rand(2, 9), cost = qty * price;
+        const have = Math.ceil((cost + rand(3, 15)) / 5) * 5, ans = have - cost;
+        text = `${N} has $${have}. ${N} buys ${qty} ${buy[1]} that cost $${price} each. How much money does ${N} have left?`;
+        return storyQ('wp-twostep', text, ans, true, r => `<p class="explain">Two steps!<br>Step 1: ${qty} × $${price} = <b>${r ? '$' + cost : '?'}</b> spent<br>Step 2: $${have} − what you spent = <b>${r ? '$' + ans : '?'}</b></p>`);
+      }
+      const g = rand(2, 6), each = rand(2, 9), extra = rand(2, 9), sub = g * each, ans = sub + extra;
+      text = `${N} has ${pl(g, gr)} with ${pl(each, it)} in each, plus ${extra} extra ${it[1]}. How many ${it[1]} does ${N} have in all?`;
+      return storyQ('wp-twostep', text, ans, false, r => `<p class="explain">Two steps!<br>Step 1: ${g} × ${each} = <b>${r ? sub : '?'}</b><br>Step 2: add the ${extra} extra = <b>${r ? ans : '?'}</b></p>`);
+    }
+  }
+  const ans = op === '+' ? a + b : op === '-' ? a - b : op === '×' ? a * b : a / b;
+  return storyQ('wp-' + type, text, ans, money, r => `<p class="explain">🔎 ${clue}</p>${mathHint(a, op, b, ans, r)}`);
+}
+
+function storyQ(key, text, answer, money, hint) {
+  return {
+    key, answer, wordy: true, story: true, hint,
+    prompt: `<div class="story">
+      <button class="say" type="button" data-say aria-label="Read it to me">🔊</button>
+      <p class="story-text">${text}</p></div>
+      ${money ? '$' : ''}<span class="answer-box" id="ans"></span>`,
+  };
+}
+
+function speak(text) {
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/\$(\d+)/g, '$1 dollars'));
+    u.rate = .9;
+    speechSynthesis.speak(u);
+  } catch (e) { /* no speech on this device */ }
+}
+
 // Spaced practice: shaky facts come back often, mastered ones rarely.
 function chooseFact(p, missionId, recent) {
   const pool = POOLS[missionId];
@@ -249,6 +390,16 @@ function mastery(p, missionId) {
   const last = h.slice(-5);
   return Math.min(1, last.reduce((a, b) => a + b, 0) / (5 * MISSION_LEN));
 }
+
+// Kid-facing progress: partial credit, so every right answer moves the bar.
+function progress(p, missionId) {
+  const pool = POOLS[missionId];
+  if (!pool) return mastery(p, missionId);
+  return pool.reduce((a, k) => a + Math.min(3, (p.stats[k] || {}).box || 0), 0) / (3 * pool.length);
+}
+const learnedCount = (p, missionId) => POOLS[missionId].filter(k => p.stats[k] && p.stats[k].r > 0).length;
+const masteredCount = (p, missionId) => POOLS[missionId].filter(k => p.stats[k] && p.stats[k].box >= 3).length;
+const showPct = x => x > 0 && x < .01 ? 1 : Math.round(x * 100);
 
 /* =========================================================
    Screens
@@ -352,7 +503,7 @@ function showHome() {
   applyTheme(p.theme);
   // suggest the least-mastered mission for this grade
   const forGrade = MISSIONS.filter(m => m.grade <= p.grade || p.grade >= 3);
-  const suggested = forGrade.slice().sort((a, b) => mastery(p, a.id) - mastery(p, b.id))[0];
+  const suggested = forGrade.slice().sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
   const found = p.found[p.theme] || 0;
   const streakOk = p.lastDay && dayDiff(p.lastDay, today()) <= 1;
 
@@ -372,13 +523,14 @@ function showHome() {
       </div>
       <div class="mission-grid">
         ${MISSIONS.map(m => {
-          const tm = th.missions[m.id], pct = Math.round(mastery(p, m.id) * 100);
+          const tm = th.missions[m.id], pct = showPct(progress(p, m.id));
+          const label = POOLS[m.id] ? `${learnedCount(p, m.id)} facts learned · ${pct}%` : `${pct}% mastered`;
           return `<button class="mission" data-m="${m.id}">
             ${m.id === suggested.id ? '<span class="tag">Try me!</span>' : ''}
             <span class="icon">${tm.icon}</span>
             <span class="name">${tm.name}</span>
             <span class="desc">${m.desc}</span>
-            <span class="mastery-label">${pct}% mastered</span>
+            <span class="mastery-label">${label}</span>
             <span class="mastery"><i style="width:${pct}%"></i></span>
           </button>`;
         }).join('')}
@@ -426,6 +578,13 @@ function nextQuestion() {
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
   if (due >= 0) q = game.retry.splice(due, 1)[0].q;
+  else if (game.missionId === 'story' || game.n === 3 || game.n === 7) {
+    // word problems: every question in the Story mission, and 2 of 10 elsewhere
+    const types = storyTypesFor(game.missionId, p);
+    const type = weightedPick(p, types, t => 'wp-' + t);
+    const big = game.missionId === 'twodigit' || (game.missionId === 'story' && (p.grade >= 3 || Math.random() < .35));
+    q = makeStory(type, p, big);
+  }
   else if (POOLS[game.missionId]) q = factQuestion(chooseFact(p, game.missionId, game.recent));
   else q = GENERATORS[game.missionId]();
   game.recent = [q.key, ...game.recent].slice(0, 6);
@@ -455,7 +614,12 @@ function drawPlay() {
   `);
   updateAnswer();
   bindAll('[data-k]', el => press(el.dataset.k));
-  document.getElementById('quit').onclick = () => { game = null; showHome(); };
+  const say = $app.querySelector('[data-say]');
+  if (say) {
+    if (!('speechSynthesis' in window)) say.remove();
+    else say.onclick = () => speak($app.querySelector('.story-text').innerText);
+  }
+  document.getElementById('quit').onclick = () => { game = null; try { speechSynthesis.cancel(); } catch (e) {} showHome(); };
 }
 
 function updateAnswer() {
@@ -582,7 +746,11 @@ function trickyFacts(p) {
 function labelKey(k) {
   const names = { 'pv-blocks': 'Reading blocks', 'pv-digit': 'Digit place', 'pv-expanded': 'Expanded form',
     'pv-10more': '10 more', 'pv-10less': '10 less', 'pv-100more': '100 more', 'pv-100less': '100 less',
-    'add2': '2-digit add', 'add2-regroup': '2-digit add (carrying)', 'sub2': '2-digit subtract', 'sub2-regroup': '2-digit subtract (borrowing)' };
+    'add2': '2-digit add', 'add2-regroup': '2-digit add (carrying)', 'sub2': '2-digit subtract', 'sub2-regroup': '2-digit subtract (borrowing)',
+    'wp-join': 'Story: adding on', 'wp-separate': 'Story: taking away', 'wp-compare': 'Story: how many more',
+    'wp-missing': 'Story: missing part', 'wp-money': 'Story: money', 'wp-pvbundle': 'Story: hundreds/tens/ones',
+    'wp-groups': 'Story: equal groups', 'wp-share': 'Story: sharing equally', 'wp-buy': 'Story: how many can you buy',
+    'wp-twostep': 'Story: two steps' };
   return names[k] || k.replace('-', ' − ').replace('+', ' + ').replace('×', ' × ').replace('÷', ' ÷ ');
 }
 
@@ -599,7 +767,7 @@ function showParents() {
         const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
         const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
         const mm = p.missions[m.id] || { plays: 0 };
-        return `<tr><td>${m.desc}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%</td></tr>`;
+        return `<tr><td>${m.desc}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
       }).join('');
       return `<div class="card stack">
         <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${p.grade === 2 ? '2nd' : '3rd'} grade · ${THEMES[p.theme].name}</span></h2>
@@ -620,6 +788,7 @@ function showParents() {
   });
 }
 function missionOf(k) {
+  if (k.startsWith('wp-')) return 'story';
   if (k.startsWith('pv-')) return 'place';
   if (/^(add|sub)2/.test(k)) return 'twodigit';
   if (/[×÷]/.test(k)) return 'muldiv';
