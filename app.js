@@ -27,8 +27,12 @@ function load() {
   return { profiles: [], current: null, sound: true };
 }
 let state = load();
-function save() {
+function writeStore() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+}
+function save() {
+  if (typeof markChanged === 'function') { markChanged(); scheduleSync(); }
+  writeStore();
 }
 const me = () => state.profiles.find(p => p.id === state.current);
 const theme = (p = me()) => THEMES[(p && p.theme) || 'space'] || THEMES.space;
@@ -681,7 +685,8 @@ function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEvent
 
 /* ----- Who's playing ----- */
 function showProfiles() {
-  state.current = null; save();
+  screen = 'profiles';
+  state.current = null; writeStore();
   applyTheme('space');
   render(`
     <div class="hero stack">
@@ -700,6 +705,7 @@ function showProfiles() {
     <div class="row-actions" style="margin-top:28px">
       <button class="btn ghost small" id="parents">👪 Grown-ups</button>
     </div>
+    ${SYNC_URL && !state.sync.code ? '<p class="muted center" style="margin-top:12px">☁️ Grown-ups: turn on family sync to share progress between devices.</p>' : ''}
   `);
   bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
   document.getElementById('add').onclick = () => showEditProfile();
@@ -769,6 +775,7 @@ function showEditProfile(existing) {
 /* ----- Home ----- */
 function showHome() {
   const p = me(); if (!p) return showProfiles();
+  screen = 'home';
   const th = theme(p);
   applyTheme(p.theme);
   const subj = SUBJECTS[p.subject] ? p.subject : 'math';
@@ -857,7 +864,7 @@ function showJournal(promptIdx) {
   document.getElementById('saveJ').onclick = () => {
     const text = document.getElementById('jt').value.trim();
     if (text.split(/\s+/).filter(Boolean).length < 5) { toast('Write a little more! ✏️'); return; }
-    p.journal.unshift({ date: today(), prompt, text });
+    p.journal.unshift({ date: today(), ts: Date.now(), prompt, text });
     p.journal = p.journal.slice(0, 200);
     p.points += 5;
     touchStreak(p); save();
@@ -1517,7 +1524,8 @@ function showParents() {
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
     <h1>Progress</h1>
-    <p class="muted">Progress is saved only in this browser on this device.</p>
+    <p class="muted">${SYNC_URL && state.sync.code ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
+    ${syncCardHtml()}
     ${state.profiles.length ? '' : '<p>No players yet.</p>'}
     <div class="stack">
     ${state.profiles.map(p => {
@@ -1551,10 +1559,13 @@ function showParents() {
     </div>
   `);
   document.getElementById('back').onclick = showProfiles;
+  bindSyncCard(showParents);
   bindAll('[data-del]', el => {
     const p = state.profiles.find(x => x.id === el.dataset.del);
     if (p && confirm(`Delete ${p.name} and all their progress? This can't be undone.`)) {
-      state.profiles = state.profiles.filter(x => x !== p); save(); showParents();
+      state.profiles = state.profiles.filter(x => x !== p);
+      state.sync.tombs.push({ id: p.id, updated: Date.now() }); delete snapshot[p.id];
+      save(); showParents();
     }
   });
 }
@@ -1568,6 +1579,153 @@ function missionOf(k) {
   return 'addsub';
 }
 
+/* =========================================================
+   Family sync (only on the family's own server, e.g. learn.kmydev.com)
+   Each device keeps working offline; changes are merged per player.
+   ========================================================= */
+const SYNC_URL = /github\.io$/.test(location.hostname) ? null : 'api/sync.php';
+state.sync = state.sync || { code: '', last: 0, tombs: [], ok: 0 };
+state.device = state.device || ('d' + Math.random().toString(36).slice(2, 10));
+const snapshot = {};             // player id -> JSON last known to match the server/our own save
+const lastPoints = {};           // player id -> points at last save, to count what THIS device earned
+const pjson = p => JSON.stringify({ ...p, updated: 0 });
+state.profiles.forEach(p => { snapshot[p.id] = pjson(p); lastPoints[p.id] = p.points || 0; });
+const sumVals = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+let syncTimer = null, syncing = false, lastSyncError = '';
+let screen = '';                 // 'profiles' | 'home' | other — so a sync can refresh safe screens
+
+function markChanged() {
+  // stamp any player whose data changed since we last saved it
+  state.profiles.forEach(p => {
+    // points ledger: each device only ever adds to its own counter, so merging never loses points
+    if (!p.earned) { p.earned = {}; p.basePoints = p.points || 0; lastPoints[p.id] = p.points || 0; }
+    const delta = (p.points || 0) - (lastPoints[p.id] ?? (p.points || 0));
+    if (delta > 0) p.earned[state.device] = (p.earned[state.device] || 0) + delta;
+    p.points = (p.basePoints || 0) + sumVals(p.earned); lastPoints[p.id] = p.points;
+    const j = pjson(p);
+    if (snapshot[p.id] !== j) { p.updated = Date.now(); p.dirty = true; snapshot[p.id] = pjson(p); }
+  });
+}
+function scheduleSync(delay = 1500) {
+  if (!SYNC_URL || !state.sync.code) return;
+  clearTimeout(syncTimer); syncTimer = setTimeout(doSync, delay);
+}
+
+async function syncCall(body) {
+  const r = await fetch(SYNC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passcode: state.sync.code, ...body }), cache: 'no-store' });
+  const j = await r.json().catch(() => ({ error: 'Server error' }));
+  if (!r.ok) throw new Error(j.error || 'Sync failed');
+  return j;
+}
+
+// Merge two copies of the same player without losing progress from either device.
+function mergePlayer(a, b) {
+  const newer = (a.updated || 0) >= (b.updated || 0) ? a : b;
+  const m = JSON.parse(JSON.stringify(newer));
+  const maxMap = (x = {}, y = {}) => { const o = { ...x }; for (const k in y) o[k] = Math.max(o[k] || 0, y[k] || 0); return o; };
+  m.earned = maxMap(a.earned, b.earned);
+  m.basePoints = Math.max(a.basePoints || 0, b.basePoints || 0);
+  m.points = (a.earned || b.earned) ? m.basePoints + sumVals(m.earned) : Math.max(a.points || 0, b.points || 0);
+  m.found = maxMap(a.found, b.found);
+  m.mistakes = maxMap(a.mistakes, b.mistakes);
+  m.typeMiss = maxMap(a.typeMiss, b.typeMiss);
+  m.passages = maxMap(a.passages, b.passages);
+  m.typeHigh = Math.max(a.typeHigh || 0, b.typeHigh || 0);
+  const la = a.lastDay || '', lb = b.lastDay || '';
+  if (la !== lb) { const w = la > lb ? a : b; m.lastDay = w.lastDay; m.streak = w.streak; }
+  else m.streak = Math.max(a.streak || 0, b.streak || 0);
+  m.stats = { ...(a.stats || {}) };
+  for (const [k, s] of Object.entries(b.stats || {})) {
+    const t = m.stats[k];
+    if (!t || (s.r + s.w) > (t.r + t.w)) m.stats[k] = s;
+  }
+  m.missions = { ...(a.missions || {}) };
+  for (const [k, s] of Object.entries(b.missions || {})) if (!m.missions[k] || s.plays > m.missions[k].plays) m.missions[k] = s;
+  const uniq = (list, key) => { const seen = new Set(); return list.filter(x => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
+  m.journal = uniq([...(a.journal || []), ...(b.journal || [])], e => e.date + '|' + e.text).sort((x, y) => (y.ts || 0) - (x.ts || 0) || (y.date > x.date ? 1 : -1)).slice(0, 200);
+  m.typing = {};
+  for (const id of new Set([...Object.keys(a.typing || {}), ...Object.keys(b.typing || {})])) {
+    m.typing[id] = uniq([...((a.typing || {})[id] || []), ...((b.typing || {})[id] || [])], r => JSON.stringify(r)).slice(-30);
+  }
+  delete m.dirty;
+  return m;
+}
+
+async function doSync() {
+  if (!SYNC_URL || !state.sync.code || syncing) return;
+  if (!navigator.onLine) { lastSyncError = 'offline'; return; }
+  syncing = true;
+  let changedView = false;
+  try {
+    markChanged();
+    const pulled = await syncCall({ action: 'pull', since: state.sync.last || 0 });
+    for (const r of pulled.players) {
+      const i = state.profiles.findIndex(p => p.id === r.id), local = state.profiles[i];
+      if (r.deleted) {
+        if (local && (local.updated || 0) <= r.updated) { state.profiles.splice(i, 1); delete snapshot[r.id]; changedView = true; }
+        continue;
+      }
+      const remote = { ...r.data, updated: r.updated };
+      if (!local) { state.profiles.push(remote); snapshot[r.id] = pjson(remote); lastPoints[r.id] = remote.points || 0; changedView = true; continue; }
+      const merged = mergePlayer(local, remote);
+      if (pjson(merged) !== pjson(remote)) { merged.updated = Date.now(); merged.dirty = true; } else merged.updated = r.updated;
+      if (pjson(merged) !== pjson(local)) changedView = true;
+      state.profiles[i] = merged; snapshot[r.id] = pjson(merged); lastPoints[r.id] = merged.points || 0;
+    }
+    const dirty = state.profiles.filter(p => p.dirty || !p.updated);
+    const push = [
+      ...dirty.map(p => { if (!p.updated) p.updated = Date.now(); const d = { ...p }; delete d.dirty; return { id: p.id, updated: p.updated, data: d }; }),
+      ...state.sync.tombs.map(t => ({ id: t.id, updated: t.updated, deleted: true })),
+    ];
+    for (let i = 0; i < push.length; i += 20) await syncCall({ action: 'push', players: push.slice(i, i + 20) });
+    dirty.forEach(p => { delete p.dirty; snapshot[p.id] = pjson(p); });
+    state.sync.tombs = [];
+    state.sync.last = pulled.now - 5000;        // small overlap so nothing slips between devices
+    state.sync.ok = Date.now(); lastSyncError = '';
+    if (state.current && !me()) state.current = null;
+    writeStore();
+    if (changedView && !game && (screen === 'profiles' || screen === 'home')) (screen === 'home' && me() ? showHome : showProfiles)();
+  } catch (e) {
+    lastSyncError = e.message || 'Sync failed';
+  } finally { syncing = false; }
+}
+
+if (SYNC_URL) {
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') doSync(); });
+  window.addEventListener('online', () => doSync());
+  setInterval(() => { if (document.visibilityState === 'visible') doSync(); }, 60000);
+}
+
+function syncCardHtml() {
+  if (!SYNC_URL) return '';
+  if (state.sync.code) {
+    const when = state.sync.ok ? new Date(state.sync.ok).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet';
+    return `<div class="card stack"><h2>☁️ Family sync is on</h2>
+      <p style="margin:0">This device shares progress with your family's other devices.<br><span class="muted">Last synced: ${when}${lastSyncError ? ` · ⚠️ ${esc(lastSyncError === 'offline' ? 'offline, will sync later' : lastSyncError)}` : ''}</span></p>
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn small" id="syncNow">Sync now</button><button class="btn ghost small" id="syncOff">Disconnect this device</button></div></div>`;
+  }
+  return `<div class="card stack"><h2>☁️ Turn on family sync</h2>
+    <p style="margin:0" class="muted">Enter your family code once on each device. Then players and progress are the same everywhere.</p>
+    <input class="text" id="famcode" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Family code">
+    <div class="row-actions" style="justify-content:flex-start"><button class="btn small" id="syncOn">Connect</button></div></div>`;
+}
+function bindSyncCard(rerender) {
+  const on = document.getElementById('syncOn'), now = document.getElementById('syncNow'), off = document.getElementById('syncOff');
+  if (on) on.onclick = async () => {
+    const code = document.getElementById('famcode').value.trim(); if (!code) return;
+    const prev = state.sync.code; state.sync.code = code;
+    try { await syncCall({ action: 'check' }); state.sync.last = 0; writeStore(); toast('Connected! Syncing…'); await doSync(); rerender(); }
+    catch (e) { state.sync.code = prev; writeStore(); toast(e.message); }
+  };
+  if (now) now.onclick = async () => { await doSync(); toast(lastSyncError ? '⚠️ ' + lastSyncError : 'Synced ✓'); rerender(); };
+  if (off) off.onclick = () => {
+    if (!confirm('Disconnect this device from family sync? Progress on this device stays here.')) return;
+    state.sync = { code: '', last: 0, tombs: [], ok: 0 }; writeStore(); rerender();
+  };
+}
+
 /* ---------- boot ---------- */
 if (me()) showHome(); else showProfiles();
+if (SYNC_URL && state.sync.code) doSync();
 })();
