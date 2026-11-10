@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T00:00:00Z",
+  "title": "Design System: Quest Academy",
+  "extensions": {
+    "shadows": [
+      { "name": "press-edge", "value": "0 4px 0 rgba(0,0,0,.18)", "purpose": "Soft bottom edge on pressable controls; flattens on :active." }
+    ],
+    "motion": [
+      { "name": "press", "value": "transform .08s", "purpose": "Button press." },
+      { "name": "ambient", "value": "4s ease-in-out infinite", "purpose": "Background particles; off under reduced motion." }
+    ],
+    "breakpoints": [ { "name": "fluid", "value": "auto-fill grids, no fixed breakpoints" } ]
+  },
+  "components": [
+    { "name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "The one main action on a screen.",
+      "html": "<button class=\"ds-btn\">Let's go! 🚀</button>",
+      "css": ".ds-btn{font-family:Fredoka,ui-rounded,system-ui,sans-serif;border:0;border-radius:999px;padding:14px 26px;font-size:1.2rem;font-weight:600;background:#ffcb47;color:#2a1559;box-shadow:0 4px 0 rgba(0,0,0,.18);transition:transform .08s}.ds-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.18)}.ds-btn:focus-visible{outline:3px solid #6ee7ff;outline-offset:3px}" },
+    { "name": "Ghost Button", "kind": "button", "refersTo": "button-ghost", "description": "Secondary actions: Back, Grown-ups.",
+      "html": "<button class=\"ds-ghost\">← Back</button>",
+      "css": ".ds-ghost{font-family:Fredoka,ui-rounded,system-ui,sans-serif;border:2px solid rgba(255,255,255,.18);border-radius:999px;padding:10px 18px;font-size:1rem;font-weight:600;background:rgba(255,255,255,.08);color:#f4f1ff}.ds-ghost:focus-visible{outline:3px solid #ffcb47;outline-offset:3px}" },
+    { "name": "Mission Tile", "kind": "card", "refersTo": "card", "description": "Pick a mission.",
+      "html": "<button class=\"ds-mission\"><span style=\"font-size:2.6rem\">☄️</span><b>Comet Count</b><span class=\"d\">Add & subtract up to 20</span></button>",
+      "css": ".ds-mission{font-family:Fredoka,ui-rounded,system-ui,sans-serif;display:flex;flex-direction:column;gap:6px;text-align:left;padding:18px;border-radius:22px;border:2px solid rgba(255,255,255,.18);background:#1c1846;color:#f4f1ff;font-size:1.3rem;width:220px}.ds-mission .d{color:#b9b3e6;font-size:1rem}.ds-mission:focus-visible{outline:3px solid #ffcb47;outline-offset:3px}" }
+  ],
+  "narrative": {
+    "northStar": "The Adventure Clubhouse",
+    "keyCharacteristics": ["One clubhouse, four wallpapers", "Chunky rounded type", "Translucent cards over a gradient sky", "Large forgiving touch targets", "Calm by default; celebration is brief and earned"],
+    "rules": [
+      { "name": "The Variables Only Rule", "body": "Components never hard-code a world color.", "section": "colors" },
+      { "name": "The Accent Is a Reward Rule", "body": "The accent marks the one thing to press or the thing you just earned.", "section": "colors" },
+      { "name": "The Big Enough Rule", "body": "Nothing a child must read is under 1rem; nothing they must tap is under 44px.", "section": "typography" },
+      { "name": "The Soft Press Rule", "body": "Pressable depth is a short, soft bottom edge that flattens on :active.", "section": "elevation" }
+    ]
+  }
+}

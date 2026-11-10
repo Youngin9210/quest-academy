@@ -880,7 +880,12 @@ const showPct = x => x > 0 && x < .01 ? 1 : Math.round(x * 100);
    Screens
    ========================================================= */
 
-function render(html) { $app.innerHTML = html; window.scrollTo(0, 0); }
+function render(html) {
+  const hadFocus = $app.contains(document.activeElement) || document.activeElement === document.body;
+  $app.innerHTML = html; window.scrollTo(0, 0);
+  // keep keyboard players on the new screen instead of losing focus to <body>
+  if (hadFocus) { $app.tabIndex = -1; $app.focus({ preventScroll: true }); }
+}
 
 function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEventListener('click', () => fn(el))); }
 
@@ -1010,7 +1015,7 @@ function showHome() {
       <div class="chips">
         <span class="chip" title="${th.point}">${th.pointIcon} ${p.points}</span>
         <span class="chip" title="days in a row">🔥 ${streakOk ? p.streak : 0}</span>
-        <button class="chip" id="snd" aria-label="Sound on or off">${state.sound ? '🔊' : '🔇'}</button>
+        <button class="chip" id="snd" aria-label="Sound" aria-pressed="${state.sound}">${state.sound ? '🔊' : '🔇'}</button>
       </div>
     </div>
     <div class="stack">
@@ -1185,26 +1190,30 @@ function drawPlay() {
   render(`
     <div class="play">
       <div class="topbar" style="margin:0">
-        <button class="btn ghost small" id="quit">✕</button>
+        <button class="btn ghost small" id="quit" aria-label="Quit">✕</button>
         <span class="chip">${tm.icon} ${tm.name}</span>
         <span class="chip">${game.n + 1} / ${game.len}</span>
       </div>
       <div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>
       <div class="card question ${game.q.wordy ? 'wordy' : ''}">${game.q.prompt}</div>
-      <div class="feedback" id="fb" aria-live="polite"></div>
-      <div class="hint" id="hint"></div>
       ${q.spell ? `<div class="row-actions"><button class="btn" id="checkText">Check ✓</button></div>`
       : q.order ? `<div class="row-actions"><button class="btn" id="checkOrder" disabled>Check ✓</button></div>`
       : game.q.choices
-        ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${c.html || esc(c.label)}</button>`).join('')}</div>`
+        ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''} ${game.q.choices.some(c => !c.html && String(c.label).length > 16) ? 'long' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${c.html || esc(c.label)}</button>`).join('')}</div>`
         : `<div class="pad" id="pad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
         ${q.decimal ? `<button data-k=".">.</button><button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button><button data-k="go" class="go wide" aria-label="Check answer">✓</button>`
           : `<button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="go" class="go" aria-label="Check answer">✓</button>`}
       </div>`}
+      <div class="feedback" id="fb" aria-live="polite"></div>
+      <div class="hint" id="hint"></div>
     </div>
   `);
   updateAnswer();
+  // passages show in full; on a follow-up question about the same story, start at the question
+  const passageTitle = ($app.querySelector('.passage h3') || {}).textContent || null;
+  if (passageTitle && passageTitle === drawPlay.lastPassage) $app.querySelector('.story').scrollIntoView({ block: 'center' });
+  drawPlay.lastPassage = passageTitle;
   bindAll('[data-k]', el => press(el.dataset.k));
   bindAll('[data-c]', el => choose(+el.dataset.c));
   bindSay();
@@ -1277,10 +1286,18 @@ function choose(i) {
     save();
     game.locked = true;
     $app.querySelectorAll('[data-c]').forEach((b, j) => { if (game.q.choices[j].correct) b.classList.add('good'); });
-    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(game.q.answer)}</b>. You'll see this one again!`;
+    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(String(game.q.answer).replace(/[.!?]$/, ''))}</b>. You'll see this one again!`;
     hint.innerHTML = why + game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
     document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
   }
+  revealHint();
+}
+
+// feedback sits below the pad/choices so nothing moves under a finger. Once the answer is shown
+// the pad is done, so bring Next into view if it's below the fold (no scrolling while the pad is live).
+function revealHint() {
+  const next = document.getElementById('next');
+  if (next) next.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // Shared right/wrong flow for spelling and sentence building
@@ -1298,11 +1315,12 @@ function judge(correct, ui) {
     if (ui.retry) ui.retry();
   } else {
     game.locked = true;
-    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(game.q.answer)}</b>. You'll see this one again!`;
+    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(String(game.q.answer).replace(/[.!?]$/, ''))}</b>. You'll see this one again!`;
     if (ui.reveal) ui.reveal();
     hint.innerHTML = game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
     document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
   }
+  revealHint();
 }
 
 function checkSpell() {
@@ -1362,6 +1380,7 @@ function check() {
     hint.innerHTML = game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
     document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
   }
+  revealHint();
 }
 
 document.addEventListener('keydown', e => {
@@ -1401,20 +1420,22 @@ function finishMission() {
   game = null;
 
   render(`
-    <div class="result stack card" style="margin-top:20px">
+    <div class="result stack card">
       <h1>${th.finish}</h1>
       ${prize ? `<div class="prize">${prize[0]}</div>
-        <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>!</p>`
+        <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>`
         : `<div class="prize">🏆</div><h2>You found everything in ${th.collection}!</h2>`}
-      <p style="font-size:1.3rem">You got <b>${right} of ${len}</b> right on the first try
+      <p class="score">You got <b>${right} of ${len}</b> right on the first try
         ${perfect ? '<br>🎯 <b>Perfect!</b> +5 bonus' : ''}<br>+${earned} ${th.point} ${th.pointIcon}</p>
       <div class="row-actions">
         <button class="btn" id="again">Play again</button>
+        <button class="btn ghost" id="coll">${th.collection}</button>
         <button class="btn ghost" id="home">Home</button>
       </div>
     </div>
   `);
   document.getElementById('again').onclick = () => startMission(missionId);
+  document.getElementById('coll').onclick = showCollection;
   document.getElementById('home').onclick = showHome;
 }
 
@@ -1527,7 +1548,7 @@ function startTyping(id) {
   render(`
     <div class="play">
       <div class="topbar" style="margin:0">
-        <button class="btn ghost small" id="quit">✕</button>
+        <button class="btn ghost small" id="quit" aria-label="Quit">✕</button>
         <span class="chip">${lesson.icon} ${lesson.name}</span>
         <span class="chips" id="tstats"></span>
       </div>
@@ -1588,14 +1609,15 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
   if (allowPrize && found < th.collectibles.length) { prize = th.collectibles[found]; p.found[p.theme] = found + 1; }
   save(); sfx.win(); confetti(th.pointIcon);
   render(`
-    <div class="result stack card" style="margin-top:20px">
+    <div class="result stack card">
       <h1>${title}</h1>
-      ${prize ? `<div class="prize">${prize[0]}</div><h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>!</p>` : ''}
+      ${prize ? `<div class="prize">${prize[0]}</div><h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>` : ''}
       ${bodyHtml}
-      <p style="font-size:1.3rem">+${earned} ${th.point} ${th.pointIcon}</p>
-      <div class="row-actions"><button class="btn" id="again">Play again</button><button class="btn ghost" id="home">Home</button></div>
+      <p class="score">+${earned} ${th.point} ${th.pointIcon}</p>
+      <div class="row-actions"><button class="btn" id="again">Play again</button>${prize ? `<button class="btn ghost" id="coll">${th.collection}</button>` : ''}<button class="btn ghost" id="home">Home</button></div>
     </div>`);
   document.getElementById('again').onclick = again;
+  const coll = document.getElementById('coll'); if (coll) coll.onclick = showCollection;
   document.getElementById('home').onclick = showHome;
 }
 
@@ -1608,7 +1630,7 @@ function startBlaster() {
   render(`
     <div class="play">
       <div class="topbar" style="margin:0">
-        <button class="btn ghost small" id="quit">✕</button>
+        <button class="btn ghost small" id="quit" aria-label="Quit">✕</button>
         <span class="chip">${look.thing} ${look.name}</span>
         <span class="chips"><span class="chip" id="gscore">0</span><span class="chip" id="glives">❤️❤️❤️</span></span>
       </div>
@@ -1866,7 +1888,7 @@ function showParents() {
           Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
         <div><b>Journal</b> <span class="muted">(${(p.journal || []).length} entries)</span>${(p.journal || []).slice(0, 5).map(e =>
           `<div class="journal-entry" style="margin-top:10px"><div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('') || '<div class="muted">Nothing written yet.</div>'}</div>
-        <div><button class="btn ghost small" data-del="${p.id}">Delete player</button></div>
+        <div><button class="btn ghost small danger" data-del="${p.id}">Delete player</button></div>
       </div>`;
     }).join('')}
     </div>
