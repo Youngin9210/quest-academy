@@ -8,7 +8,7 @@ window.SUBJECTS.writing = {
       questions: [
         // Grade 2: high-frequency words and common patterns
         { id: 'write-spell-01', type: 'spell', word: 'because', sentence: 'I wore a coat because it was cold.', grades: [2] },
-        { id: 'write-spell-02', type: 'spell', word: 'friend', sentence: '{buddy} is my best friend.', grades: [2] },
+        { id: 'write-spell-02', type: 'spell', word: 'friend', sentence: 'Mia is my best friend.', grades: [2] },
         { id: 'write-spell-03', type: 'spell', word: 'again', sentence: 'Can we read that story again?', grades: [2] },
         { id: 'write-spell-04', type: 'spell', word: 'would', sentence: 'I would like a glass of water, please.', grades: [2] },
         { id: 'write-spell-05', type: 'spell', word: 'there', sentence: 'Put your backpack over there.', grades: [2] },

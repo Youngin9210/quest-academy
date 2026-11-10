@@ -354,13 +354,47 @@ function storyQ(key, text, answer, money, hint) {
   };
 }
 
-function speak(text) {
+// Use the most natural English voice the device has (Premium/Enhanced voices if downloaded).
+let bestVoice = null;
+function pickVoice() {
+  try {
+    const vs = speechSynthesis.getVoices().filter(v => /^en[-_]/i.test(v.lang));
+    const score = v => (/premium/i.test(v.name) ? 40 : 0) + (/enhanced/i.test(v.name) ? 30 : 0)
+      + (/^en[-_]US/i.test(v.lang) ? 10 : 0) + (/samantha|ava|zoe|allison|susan/i.test(v.name) ? 5 : 0)
+      + (/compact|eloquence|novelty|bad news|bells|boing|bubbles|cellos|jester|organ|superstar|trinoids|whisper|wobble|zarvox|albert|bahh|fred|junior|ralph|grandma|grandpa|rocko|shelley|eddy|flo|reed|sandy/i.test(v.name) ? -50 : 0);
+    bestVoice = vs.sort((a, b) => score(b) - score(a))[0] || null;
+  } catch (e) { /* no speech */ }
+}
+try { pickVoice(); speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch (e) {}
+
+function speak(text, rate = .9, then) {
+  stopAudio();
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text.replace(/\$(\d+)/g, '$1 dollars'));
-    u.rate = .9;
+    if (bestVoice) u.voice = bestVoice;
+    u.rate = rate;
+    if (then) u.onend = then;
     speechSynthesis.speak(u);
   } catch (e) { /* no speech on this device */ }
+}
+
+// Recorded audio (spelling words). One shared element so iPads allow replays.
+const player = new Audio();
+let playQueue = [];
+function stopAudio() { playQueue = []; try { player.pause(); } catch (e) {} }
+function playClips(clips, rate = 1, then) {
+  try { speechSynthesis.cancel(); } catch (e) {}
+  stopAudio();
+  playQueue = clips.slice();
+  const next = () => {
+    const src = playQueue.shift(); if (!src) { if (then) then(); return; }
+    player.src = src;
+    player.playbackRate = rate; player.preservesPitch = true; player.webkitPreservesPitch = true;
+    player.play().catch(() => {});
+  };
+  player.onended = () => setTimeout(next, 450);
+  next();
 }
 
 /* ---------- Multiple choice ("Pick It!") ---------- */
@@ -561,8 +595,15 @@ function bankQuestion(item, p) {
     return {
       key, spell: q.word, wordy: true, answer: q.word,
       sayText: `${q.word}. ${sentence} ${q.word}.`,
+      // a real person's recording of the word, if we have one (see audio/CREDITS.md)
+      wordClip: window.SPELL_AUDIO && SPELL_AUDIO[q.word] ? `audio/spell/${q.word}.m4a` : null,
+      sentence,
       prompt: `${pic}<p class="muted" style="margin:0 0 10px">Listen, then spell the word.</p>
-        <button class="btn" type="button" data-say-text>🔊 Hear the word</button>
+        <div class="row-actions">
+          <button class="btn" type="button" data-hear="word">🔊 Hear the word</button>
+          <button class="btn ghost" type="button" data-hear="slow">🐢 Say it slowly</button>
+          <button class="btn ghost" type="button" data-hear="sentence">💬 Use it in a sentence</button>
+        </div>
         <p class="story-text" style="margin:16px 0">${blanked}</p>
         <input class="text spell-input" id="spell" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" aria-label="Type the word">`,
       hint: r => r ? `<p class="explain">The word is <b>${esc(q.word)}</b></p>`
@@ -939,10 +980,19 @@ function drawPlay() {
     const input = document.getElementById('spell');
     document.getElementById('checkText').onclick = checkSpell;
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const n = document.getElementById('next'); n ? n.click() : checkSpell(); } });
-    setTimeout(() => speak(q.sayText), 350);
+    const clip = q.wordClip, word = q.spell;
+    const sayWord = (rate, then) => clip ? playClips([clip], rate, then) : speak(word, rate === 1 ? .8 : .5, then);
+    const hear = what => {
+      if (what === 'all') return sayWord(1, () => setTimeout(() => speak(q.sentence, .85, () => setTimeout(() => sayWord(1), 400)), 400));
+      if (what === 'word') return sayWord(1);
+      if (what === 'slow') return sayWord(.7);
+      return speak(q.sentence, .85);
+    };
+    $app.querySelectorAll('[data-hear]').forEach(b => { b.onclick = () => hear(b.dataset.hear); });
+    setTimeout(() => hear('all'), 350);
   }
   if (q.order) { document.getElementById('checkOrder').onclick = checkOrder; drawOrder(); }
-  document.getElementById('quit').onclick = () => { game = null; try { speechSynthesis.cancel(); } catch (e) {} showHome(); };
+  document.getElementById('quit').onclick = () => { game = null; stopAudio(); try { speechSynthesis.cancel(); } catch (e) {} showHome(); };
 }
 
 function updateAnswer() {
