@@ -15,6 +15,7 @@ const MISSIONS = [
   { id: 'twodigit', grade: 2, desc: 'Add & subtract up to 100' },
   { id: 'muldiv',   grade: 3, desc: 'Times & divide facts' },
   { id: 'story',    grade: 2, desc: 'Word problems' },
+  { id: 'choice',   grade: 2, desc: 'Tap the right answer' },
 ];
 
 /* ---------- storage ---------- */
@@ -359,6 +360,144 @@ function speak(text) {
   } catch (e) { /* no speech on this device */ }
 }
 
+/* ---------- Multiple choice ("Pick It!") ---------- */
+
+// Wrong choices are common mistakes. When one is picked, we explain that
+// exact mistake and count it for the grown-ups page.
+const MISTAKES = {
+  'carry':        ['Forgot to carry', 'Looks like you forgot to carry the 10! When the ones make 10 or more, move a ten over to the tens.'],
+  'column-glue':  ['Wrote both column sums', 'Careful! When the ones make 10 or more, carry the ten instead of writing the whole number down.'],
+  'borrow-flip':  ['Subtracted small from big', 'Oops, you took the small ones digit from the big one. When the top ones digit is smaller, borrow a ten first!'],
+  'borrow-tens':  ['Forgot to borrow from tens', 'You borrowed a ten, so remember to take 1 away from the tens!'],
+  'wrong-op':     ['Picked the wrong operation', 'Read it again: are we putting together, taking away, making equal groups, or sharing?'],
+  'wrong-sign':   ['Added instead of subtracted (or the other way)', 'Check the sign! Are we adding or subtracting?'],
+  'sign-pick':    ['Picked the wrong sign', 'Try each sign and check: which one really makes that number?'],
+  'compare-flip': ['Mixed up < and >', 'The open mouth always eats the bigger number!'],
+  'round-way':    ['Rounded the wrong way', 'Which one is closer? 5 or more rounds up, 4 or less rounds down.'],
+  'round-place':  ['Rounded to the wrong place', 'Check which place we’re rounding to: the nearest 10 or the nearest 100?'],
+};
+const OPS = { '+': (a, b) => a + b, '−': (a, b) => a - b, '×': (a, b) => a * b, '÷': (a, b) => a / b };
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = rand(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const round10 = n => Math.round(n / 10) * 10, round100 = n => Math.round(n / 100) * 100;
+
+function mcQ(key, promptHtml, choices, hint, story) {
+  // choices: [{label, correct, tag}] — duplicates by label are removed
+  const seen = new Set();
+  const list = shuffle(choices.filter(c => !seen.has(String(c.label)) && seen.add(String(c.label))));
+  return {
+    key, choices: list, hint, wordy: true, story: !!story,
+    answer: list.find(c => c.correct).label,
+    prompt: story
+      ? `<div class="story"><button class="say" type="button" data-say aria-label="Read it to me">🔊</button><p class="story-text">${promptHtml}</p></div>`
+      : promptHtml,
+  };
+}
+
+const CHOICE_TYPES = {
+  matchop(p) {
+    const S = theme(p).story, N = esc(p.name), B = S.buddy, it = S.item, gr = S.group;
+    const pl = (n, w) => `${n} ${n === 1 ? w[0] : w[1]}`;
+    const ops = p.grade >= 3 ? ['+', '−', '×', '÷'] : ['+', '−'];
+    const op = pick(ops);
+    let a, b, text;
+    if (op === '+') { a = rand(10, 30); b = rand(2, 9); text = `${N} has ${pl(a, it)}. ${B} gives ${N} ${b} more. How many ${it[1]} does ${N} have now?`; }
+    if (op === '−') { a = rand(10, 30); b = rand(2, 9); text = `${N} had ${pl(a, it)} and gave ${b} to ${B}. How many ${it[1]} are left?`; }
+    if (op === '×') { a = rand(4, 9); b = rand(2, a - 1); text = `${N} has ${pl(a, gr)} with ${pl(b, it)} in each. How many ${it[1]} are there in all?`; }
+    if (op === '÷') { b = rand(2, 9); a = b * rand(2, 9); text = `${N} puts ${a} ${it[1]} into ${b} ${gr[1]}, with the same number in each. How many ${it[1]} go in each ${gr[0]}?`; }
+    const offered = p.grade >= 3 ? ops : ['+', '−', '×'];
+    return mcQ('mc-matchop', `${text}<br><b>Which number sentence matches the story?</b>`,
+      offered.map(o => ({ label: `${a} ${o} ${b}`, correct: o === op, tag: 'wrong-op' })),
+      r => `<p class="explain">🔎 Getting more → <b>+</b> · Giving away → <b>−</b>${p.grade >= 3 ? ' · Equal groups → <b>×</b> · Sharing equally → <b>÷</b>' : ''}${r ? `<br>This story matches <b>${a} ${op} ${b}</b>` : ''}</p>`, true);
+  },
+  compare() {
+    const a = rand(102, 987);
+    let b;
+    const roll = Math.random();
+    if (roll < .15) b = a;
+    else if (roll < .6) { const s = String(a); b = +(s[0] + s[2] + s[1]); if (b === a) b = a + rand(1, 9); }  // swap tens and ones
+    else b = a + pick([-1, 1]) * pick([1, 10, 100]) * rand(1, 3);
+    if (b < 100 || b > 999) b = a + 10;
+    const right = a < b ? '<' : a > b ? '>' : '=';
+    return mcQ('mc-compare', `Which sign goes in the box?<div class="big-math">${a} <span class="slot">?</span> ${b}</div>`,
+      ['<', '>', '='].map(s => ({ label: s, correct: s === right, tag: s !== '=' && right !== '=' ? 'compare-flip' : null })),
+      r => `<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">${pvChart(a)}${pvChart(b)}</div>
+        <p class="explain">Compare the hundreds first, then the tens, then the ones.<br><span class="muted">&lt; means “is less than” · &gt; means “is greater than”</span>${r ? `<br><b>${a} ${right} ${b}</b>` : ''}</p>`);
+  },
+  round() {
+    let n; do { n = rand(101, 989); } while (n % 10 === 0);
+    const place = pick([10, 100]);
+    const right = Math.round(n / place) * place;
+    const lo = Math.floor(n / place) * place, hi = lo + place;
+    const other = place === 10 ? round100(n) : round10(n);
+    const choices = [
+      { label: right, correct: true },
+      { label: right === lo ? hi : lo, tag: 'round-way' },
+      { label: other, tag: 'round-place' },
+      { label: right + (right === lo ? -place : 2 * place), tag: 'round-way' },
+    ];
+    return mcQ('mc-round', `Round <b>${n}</b> to the nearest <b>${place}</b>.`, choices,
+      r => `<p class="explain">${n} is between <b>${lo}</b> and <b>${hi}</b>. Which one is it closer to?<br>
+        <span class="muted">Look at the ${place === 10 ? 'ones' : 'tens'} digit: 5 or more rounds up.</span>${r ? `<br>${n} rounds to <b>${right}</b>` : ''}</p>`);
+  },
+  sign(p) {
+    const ops = p.grade >= 3 ? ['+', '−', '×', '÷'] : ['+', '−'];
+    let a, b, op, c;
+    for (;;) {
+      op = pick(ops);
+      if (op === '×' || op === '÷') { b = rand(2, 9); const k = rand(2, 9); a = op === '×' ? k : b * k; }
+      else { a = rand(p.grade >= 3 ? 10 : 5, p.grade >= 3 ? 60 : 20); b = rand(2, Math.min(15, a - 1)); }
+      c = OPS[op](a, b);
+      if (ops.filter(o => OPS[o](a, b) === c).length === 1) break;   // only one sign works
+    }
+    return mcQ('mc-sign', `Which sign makes it true?<div class="big-math">${a} <span class="slot">?</span> ${b} = ${c}</div>`,
+      ops.map(o => ({ label: o, correct: o === op, tag: 'sign-pick' })),
+      r => `<p class="explain">Is <b>${c}</b> bigger or smaller than ${a}?<br><span class="muted">Bigger → + ${p.grade >= 3 ? 'or ×' : ''} · Smaller → − ${p.grade >= 3 ? 'or ÷' : ''}</span>
+        ${r ? `<br>${ops.map(o => `${a} ${o} ${b} = ${OPS[o](a, b) % 1 || OPS[o](a, b) < 0 ? '…' : OPS[o](a, b)}`).join('<br>')}` : ''}</p>`);
+  },
+  oddeven() {
+    const n = rand(11, 999), even = n % 2 === 0;
+    return mcQ('mc-oddeven', `Is <b>${n}</b> odd or even?`,
+      [{ label: 'Odd', correct: !even }, { label: 'Even', correct: even }],
+      r => `<p class="explain">Only the <b>ones digit</b> matters!<br><span class="muted">Ends in 0, 2, 4, 6 or 8 → even · 1, 3, 5, 7 or 9 → odd</span>${r ? `<br>${n} ends in ${n % 10}, so it's <b>${even ? 'even' : 'odd'}</b>` : ''}</p>`);
+  },
+  estimate(p) {
+    const big = p.grade >= 3 && Math.random() < .5;
+    const R = big ? round100 : round10, step = big ? 100 : 10;
+    let a, b;
+    do { a = big ? rand(110, 690) : rand(11, 79); b = big ? rand(110, 290) : rand(11, 69); } while (a % step === 0 || b % step === 0);
+    const est = R(a) + R(b);
+    const choices = [{ label: est, correct: true }, { label: est + 2 * step }, { label: est - 2 * step > 0 ? est - 2 * step : est + 4 * step }];
+    return mcQ('mc-estimate', `About how much is <b>${a} + ${b}</b>?<br><span class="muted">Round each number to the nearest ${step} first.</span>`, choices,
+      r => `<p class="explain">${a} is about <b>${R(a)}</b> · ${b} is about <b>${R(b)}</b><br>${R(a)} + ${R(b)} = <b>${r ? est : '?'}</b></p>`);
+  },
+  regroup(p) {
+    const big = p.grade >= 3;
+    if (Math.random() < .5) {
+      let a, b;
+      do { a = rand(big ? 15 : 15, big ? 79 : 69); b = rand(11, 99 - a); } while ((a % 10) + (b % 10) < 10 || b < 11);
+      const ans = a + b, tens = Math.floor(a / 10) + Math.floor(b / 10), ones = (a % 10) + (b % 10);
+      return mcQ('mc-regroup', `<span class="vertical big-math"><span>${a}</span><span>+ ${b}</span><span class="line"></span><span>?</span></span>`, [
+        { label: ans, correct: true }, { label: ans - 10, tag: 'carry' },
+        { label: +(`${tens}${ones}`), tag: 'column-glue' }, { label: a - b > 0 ? a - b : ans + 10, tag: a - b > 0 ? 'wrong-sign' : 'carry' },
+      ], r => `<p class="explain">Ones: ${a % 10} + ${b % 10} = ${ones}. That's 1 ten and ${ones - 10} ones!<br>Tens: ${Math.floor(a / 10)} + ${Math.floor(b / 10)} + 1 carried = ${r ? tens + 1 : '?'}<br>${r ? `Answer: <b>${ans}</b>` : ''}</p>`);
+    }
+    let a, b;
+    do { a = rand(31, 99); b = rand(12, a - 10); } while ((a % 10) >= (b % 10));
+    const ans = a - b, ao = a % 10, bo = b % 10;
+    const flip = (Math.floor(a / 10) - Math.floor(b / 10)) * 10 + (bo - ao);
+    return mcQ('mc-regroup', `<span class="vertical big-math"><span>${a}</span><span>− ${b}</span><span class="line"></span><span>?</span></span>`, [
+      { label: ans, correct: true }, { label: flip, tag: 'borrow-flip' },
+      { label: ans + 10, tag: 'borrow-tens' }, { label: a + b, tag: 'wrong-sign' },
+    ], r => `<p class="explain">${ao} is smaller than ${bo}, so borrow a ten:<br>${Math.floor(a / 10)} tens ${ao} ones → ${Math.floor(a / 10) - 1} tens ${ao + 10} ones<br>Ones: ${ao + 10} − ${bo} = ${r ? ao + 10 - bo : '?'} · Tens: ${Math.floor(a / 10) - 1} − ${Math.floor(b / 10)} = ${r ? Math.floor(a / 10) - 1 - Math.floor(b / 10) : '?'}${r ? `<br>Answer: <b>${ans}</b>` : ''}</p>`);
+  },
+};
+GENERATORS.choice = p => {
+  const types = p.grade >= 3
+    ? ['matchop', 'matchop', 'compare', 'round', 'round', 'sign', 'estimate', 'regroup', 'oddeven']
+    : ['matchop', 'matchop', 'compare', 'compare', 'sign', 'estimate', 'regroup', 'oddeven'];
+  return CHOICE_TYPES[weightedPick(p, types, t => 'mc-' + t)](p);
+};
+
 // Spaced practice: shaky facts come back often, mastered ones rarely.
 function chooseFact(p, missionId, recent) {
   const pool = POOLS[missionId];
@@ -578,7 +717,7 @@ function nextQuestion() {
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
   if (due >= 0) q = game.retry.splice(due, 1)[0].q;
-  else if (game.missionId === 'story' || game.n === 3 || game.n === 7) {
+  else if (game.missionId === 'story' || (STORY_TYPES[game.missionId] && (game.n === 3 || game.n === 7))) {
     // word problems: every question in the Story mission, and 2 of 10 elsewhere
     const types = storyTypesFor(game.missionId, p);
     const type = weightedPick(p, types, t => 'wp-' + t);
@@ -586,7 +725,7 @@ function nextQuestion() {
     q = makeStory(type, p, big);
   }
   else if (POOLS[game.missionId]) q = factQuestion(chooseFact(p, game.missionId, game.recent));
-  else q = GENERATORS[game.missionId]();
+  else q = GENERATORS[game.missionId](p);
   game.recent = [q.key, ...game.recent].slice(0, 6);
   Object.assign(game, { q, input: '', tries: 0, locked: false });
   drawPlay();
@@ -606,14 +745,17 @@ function drawPlay() {
       <div class="card question ${game.q.wordy ? 'wordy' : ''}">${game.q.prompt}</div>
       <div class="feedback" id="fb" aria-live="polite"></div>
       <div class="hint" id="hint"></div>
-      <div class="pad" id="pad">
+      ${game.q.choices
+        ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${esc(c.label)}</button>`).join('')}</div>`
+        : `<div class="pad" id="pad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
         <button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="go" class="go" aria-label="Check answer">✓</button>
-      </div>
+      </div>`}
     </div>
   `);
   updateAnswer();
   bindAll('[data-k]', el => press(el.dataset.k));
+  bindAll('[data-c]', el => choose(+el.dataset.c));
   const say = $app.querySelector('[data-say]');
   if (say) {
     if (!('speechSynthesis' in window)) say.remove();
@@ -636,23 +778,54 @@ function press(k) {
   updateAnswer();
 }
 
+// Shared success path for typed and tapped answers
+function answeredRight(p, th) {
+  game.locked = true;
+  if (game.tries === 1) { record(p, game.q.key, true); game.firstTry++; }
+  const fb = document.getElementById('fb');
+  fb.className = 'feedback good'; fb.textContent = pick(th.cheers) + ' ' + th.pointIcon;
+  sfx.good(); save();
+  game.n++;
+  document.getElementById('bar').style.width = (game.n / MISSION_LEN * 100) + '%';
+  setTimeout(nextQuestion, game.tries === 1 ? 900 : 1300);
+}
+
+function choose(i) {
+  if (!game || game.locked || !game.q.choices) return;
+  const p = me(), th = theme(p), c = game.q.choices[i];
+  const btn = $app.querySelector(`[data-c="${i}"]`);
+  if (!c || btn.disabled) return;
+  const fb = document.getElementById('fb'), hint = document.getElementById('hint');
+  game.tries++;
+  if (c.correct) { btn.classList.add('good'); return answeredRight(p, th); }
+  sfx.bad();
+  btn.classList.add('bad'); btn.disabled = true;
+  if (c.tag) { p.mistakes = p.mistakes || {}; p.mistakes[c.tag] = (p.mistakes[c.tag] || 0) + 1; }
+  const why = c.tag && MISTAKES[c.tag] ? `<p class="explain why">💡 ${MISTAKES[c.tag][1]}</p>` : '';
+  const left = $app.querySelectorAll('[data-c]:not(:disabled)').length;
+  if (game.tries === 1 && left > 1) {
+    record(p, game.q.key, false); save();
+    game.retry.push({ q: game.q, at: game.n + 3 });
+    fb.className = 'feedback bad'; fb.textContent = pick(th.oops);
+    hint.innerHTML = why + game.q.hint(false);
+  } else {
+    if (game.tries === 1) { record(p, game.q.key, false); game.retry.push({ q: game.q, at: game.n + 3 }); }
+    save();
+    game.locked = true;
+    $app.querySelectorAll('[data-c]').forEach((b, j) => { if (game.q.choices[j].correct) b.classList.add('good'); });
+    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(game.q.answer)}</b>. You'll see this one again!`;
+    hint.innerHTML = why + game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
+    document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
+  }
+}
+
 function check() {
   if (game.input === '') return;
   const p = me(), th = theme(p);
   const ans = document.getElementById('ans'), fb = document.getElementById('fb'), hint = document.getElementById('hint');
   const correct = +game.input === game.q.answer;
   game.tries++;
-  if (correct) {
-    game.locked = true;
-    if (game.tries === 1) { record(p, game.q.key, true); game.firstTry++; }
-    ans.className = 'answer-box good'; fb.className = 'feedback good';
-    fb.textContent = pick(th.cheers) + ' ' + th.pointIcon;
-    sfx.good(); save();
-    game.n++;
-    document.getElementById('bar').style.width = (game.n / MISSION_LEN * 100) + '%';
-    setTimeout(nextQuestion, game.tries === 1 ? 900 : 1300);
-    return;
-  }
+  if (correct) { ans.className = 'answer-box good'; return answeredRight(p, th); }
   sfx.bad();
   ans.className = 'answer-box bad';
   if (game.tries === 1) {
@@ -673,6 +846,11 @@ function check() {
 
 document.addEventListener('keydown', e => {
   if (!game || !document.getElementById('pad')) return;
+  if (game.q.choices) {
+    if (/^[1-4]$/.test(e.key)) choose(+e.key - 1);
+    else if (e.key === 'Enter') { const n = document.getElementById('next'); if (n) n.click(); }
+    return;
+  }
   if (/^[0-9]$/.test(e.key)) press(e.key);
   else if (e.key === 'Backspace') press('del');
   else if (e.key === 'Enter') { const n = document.getElementById('next'); n ? n.click() : press('go'); }
@@ -747,6 +925,8 @@ function labelKey(k) {
   const names = { 'pv-blocks': 'Reading blocks', 'pv-digit': 'Digit place', 'pv-expanded': 'Expanded form',
     'pv-10more': '10 more', 'pv-10less': '10 less', 'pv-100more': '100 more', 'pv-100less': '100 less',
     'add2': '2-digit add', 'add2-regroup': '2-digit add (carrying)', 'sub2': '2-digit subtract', 'sub2-regroup': '2-digit subtract (borrowing)',
+    'mc-matchop': 'Pick the matching number sentence', 'mc-compare': 'Comparing with < > =', 'mc-round': 'Rounding',
+    'mc-sign': 'Missing sign', 'mc-oddeven': 'Odd or even', 'mc-estimate': 'Estimating', 'mc-regroup': 'Carrying & borrowing',
     'wp-join': 'Story: adding on', 'wp-separate': 'Story: taking away', 'wp-compare': 'Story: how many more',
     'wp-missing': 'Story: missing part', 'wp-money': 'Story: money', 'wp-pvbundle': 'Story: hundreds/tens/ones',
     'wp-groups': 'Story: equal groups', 'wp-share': 'Story: sharing equally', 'wp-buy': 'Story: how many can you buy',
@@ -774,6 +954,8 @@ function showParents() {
         <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'}</p>
         <div style="overflow-x:auto"><table><tr><th>Skill</th><th>Missions</th><th>First-try accuracy</th><th>Mastered</th></tr>${rows}</table></div>
         <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
+        <div><b>Common mistakes</b> <span class="muted">(from the multiple choice mission)</span><div class="facts" style="margin-top:8px">${
+          Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
         <div><button class="btn ghost small" data-del="${p.id}">Delete player</button></div>
       </div>`;
     }).join('')}
@@ -789,6 +971,7 @@ function showParents() {
 }
 function missionOf(k) {
   if (k.startsWith('wp-')) return 'story';
+  if (k.startsWith('mc-')) return 'choice';
   if (k.startsWith('pv-')) return 'place';
   if (/^(add|sub)2/.test(k)) return 'twodigit';
   if (/[×÷]/.test(k)) return 'muldiv';

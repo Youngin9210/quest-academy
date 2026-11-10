@@ -229,3 +229,17 @@ th { color: var(--muted); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
+
+/* ---------- Multiple choice ---------- */
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; width: 100%; margin: 0 auto; }
+.choices button {
+  font-size: clamp(1.4rem, 5vw, 2rem); font-weight: 700; padding: 18px 10px; border-radius: 20px;
+  border: 3px solid var(--card-border); background: var(--card); box-shadow: 0 4px 0 rgba(0,0,0,.18);
+  transition: transform .08s;
+}
+.choices button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.18); }
+.choices button.good { border-color: var(--good); background: color-mix(in srgb, var(--good) 25%, transparent); }
+.choices button.bad { border-color: var(--bad); opacity: .55; text-decoration: line-through; animation: shake .35s; }
+.big-math { font-size: clamp(2.2rem, 9vw, 3.4rem); font-weight: 700; margin-top: 10px; }
+.slot { display: inline-block; min-width: 1.3em; border: 4px dashed var(--accent); border-radius: 12px; color: var(--accent); padding: 0 .15em; }
+.why { color: var(--bad); font-weight: 600; }

@@ -13,6 +13,7 @@ window.THEMES = {
       twodigit: { name: 'Nebula 100',   icon: '🌌' },
       muldiv:   { name: 'Star Grid',    icon: '🌟' },
       story:    { name: "Captain's Log", icon: '📜' },
+      choice:   { name: 'Warp Gate', icon: '🌀' },
     },
     story: {
       buddy: 'Captain Zorp', shop: 'the Moon Market',
@@ -42,6 +43,7 @@ window.THEMES = {
       twodigit: { name: 'Kelp Forest',    icon: '🌿' },
       muldiv:   { name: 'Deep Trench',    icon: '🐋' },
       story:    { name: 'Message in a Bottle', icon: '🍾' },
+      choice:   { name: 'Clam Choice', icon: '🐚' },
     },
     story: {
       buddy: 'Finn the Fish', shop: 'the Reef Shop',
@@ -71,6 +73,7 @@ window.THEMES = {
       twodigit: { name: 'Bunny Meadow',   icon: '🌼' },
       muldiv:   { name: 'Pony Ranch',     icon: '🐎' },
       story:    { name: 'Rescue Stories', icon: '📖' },
+      choice:   { name: 'Paw Pick', icon: '🐾' },
     },
     story: {
       buddy: 'Dr. Paws', shop: 'the Pet Shop',
@@ -100,6 +103,7 @@ window.THEMES = {
       twodigit: { name: 'Donut Diner',    icon: '🍩' },
       muldiv:   { name: 'Cake Tower',     icon: '🎂' },
       story:    { name: 'Recipe Riddles', icon: '📜' },
+      choice:   { name: 'Candy Choice', icon: '🍬' },
     },
     story: {
       buddy: 'Chef Crumb', shop: 'the Sugar Store',
