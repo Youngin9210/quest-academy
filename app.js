@@ -967,6 +967,8 @@ function showEditProfile(existing) {
           <button class="btn" id="saveP">${existing ? 'Save' : `Let's go! ${th.icon}`}</button>
           ${existing ? '<button class="btn ghost small" id="switch">Switch player</button>' : ''}
         </div>
+        ${existing ? `<div class="row-actions" style="justify-content:flex-start">
+          <button class="btn ghost small danger" id="delP" type="button">${grownupUnlocked() ? '🗑️ Delete this player' : '🔒 Delete this player (grown-ups)'}</button></div>` : ''}
       </div>
     `);
     const nm = document.getElementById('nm');
@@ -979,6 +981,13 @@ function showEditProfile(existing) {
     $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; }; });
     document.getElementById('back').onclick = () => existing ? showHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
+    const dp = document.getElementById('delP');
+    if (dp) dp.onclick = () => {
+      const del = () => { if (deletePlayer(existing)) showProfiles(); else { applyTheme(sel.theme); draw(); } };
+      if (grownupUnlocked()) return del();
+      sel.name = nm.value;
+      showParentGate(del, () => { applyTheme(sel.theme); draw(); });
+    };
     document.getElementById('saveP').onclick = () => {
       const name = sel.name.trim();
       if (!name) { toast('Type your name first!'); nm.focus(); return; }
@@ -2099,13 +2108,21 @@ function showParents() {
   bindSyncCard(showParents);
   bindAll('[data-del]', el => {
     const p = state.profiles.find(x => x.id === el.dataset.del);
-    if (p && confirm(`Delete ${p.name} and all their progress? This can't be undone.`)) {
-      state.profiles = state.profiles.filter(x => x !== p);
-      state.sync.tombs.push({ id: p.id, updated: Date.now() }); delete snapshot[p.id];
-      save(); showParents();
-    }
+    if (p && deletePlayer(p)) showParents();
   });
 }
+// asks first; removes the player here and (through sync) on every family device
+function deletePlayer(p) {
+  if (!confirm(`Delete ${p.name} and all their progress? This can't be undone.`)) return false;
+  state.profiles = state.profiles.filter(x => x.id !== p.id);
+  state.sync.tombs = state.sync.tombs.filter(t => t.id !== p.id);
+  state.sync.tombs.push({ id: p.id, updated: Math.max(Date.now(), (p.updated || 0) + 1) });
+  delete snapshot[p.id];
+  if (state.current === p.id) state.current = null;
+  save(); toast(`${p.name} was deleted`);
+  return true;
+}
+
 function missionOf(k) {
   if (k.startsWith('q:')) return (QINDEX[k.slice(2)] || {}).mid;
   if (k.startsWith('mul-')) return 'multi';
@@ -2210,7 +2227,9 @@ async function doSync() {
     markChanged();
     const pulled = await syncCall({ action: 'pull', since: state.sync.last || 0 });
     state.sync.family = pulled.family; state.sync.admin = !!pulled.admin;
+    const deletedHere = new Set(state.sync.tombs.map(t => t.id));
     for (const r of pulled.players) {
+      if (deletedHere.has(r.id)) continue;   // deleted on this device; the delete goes up below
       const i = state.profiles.findIndex(p => p.id === r.id), local = state.profiles[i];
       if (r.deleted) {
         if (local && (local.updated || 0) <= r.updated) { state.profiles.splice(i, 1); delete snapshot[r.id]; changedView = true; }

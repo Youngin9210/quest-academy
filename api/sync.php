@@ -229,7 +229,7 @@ if ($action === 'pull') {
 
 if ($action === 'push') {
   $saved = [];
-  $sel = $db->prepare('SELECT updated FROM qa_players WHERE family_id = ? AND id = ?');
+  $sel = $db->prepare('SELECT updated, deleted FROM qa_players WHERE family_id = ? AND id = ?');
   $ins = $sqlite
     ? $db->prepare('INSERT OR REPLACE INTO qa_players (family_id, id, data, updated, deleted) VALUES (?, ?, ?, ?, ?)')
     : $db->prepare('INSERT INTO qa_players (family_id, id, data, updated, deleted) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), updated = VALUES(updated), deleted = VALUES(deleted)');
@@ -239,9 +239,10 @@ if ($action === 'push') {
     $id = (string) ($p['id'] ?? '');
     if (!preg_match('/^[a-z0-9]{4,64}$/i', $id)) continue;
     $updated = (int) ($p['updated'] ?? 0);
-    $sel->execute([$fid, $id]); $have = $sel->fetchColumn();
-    if ($have !== false && (int) $have >= $updated) continue;   // already have something newer
+    $sel->execute([$fid, $id]); $row = $sel->fetch(PDO::FETCH_ASSOC); $have = $row ? $row['updated'] : false;
     $deleted = !empty($p['deleted']);
+    if ($row && (int) $row['deleted'] && !$deleted) continue;  // a deleted player stays deleted (ids are never reused)
+    if ($have !== false && (int) $have >= $updated && !($deleted && !(int) $row['deleted'])) continue;   // already have something newer
     if ($have === false && !$deleted && ++$existing > 12) continue; // keep each family to a sensible size
     $ins->execute([$fid, $id, $deleted ? '{}' : json_encode($p['data'] ?? new stdClass()), $updated, $deleted ? 1 : 0]);
     $saved[] = $id;
