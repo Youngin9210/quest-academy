@@ -16,6 +16,8 @@ $configPaths = array_filter([getenv('QUEST_CONFIG') ?: null, __DIR__ . '/../../q
 $cfg = null;
 foreach ($configPaths as $p) { if (is_file($p)) { $cfg = require $p; break; } }
 if (!is_array($cfg) || empty($cfg['family_passcode'])) out(500, ['error' => 'Server is not set up yet (quest-config.php missing).']);
+if (strlen((string) $cfg['family_passcode']) < 8 || str_contains((string) $cfg['family_passcode'], 'CHOOSE_A_FAMILY_CODE'))
+  out(500, ['error' => 'Choose a family code (8+ characters) in quest-config.php.']);
 
 try {
   $db = new PDO($cfg['dsn'], $cfg['db_user'] ?? null, $cfg['db_pass'] ?? null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
