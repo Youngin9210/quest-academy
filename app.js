@@ -910,7 +910,7 @@ function showProfiles() {
   `);
   bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
   document.getElementById('add').onclick = () => showEditProfile();
-  document.getElementById('parents').onclick = showParentGate;
+  document.getElementById('parents').onclick = () => showParentGate();
 }
 
 /* ----- Create / edit player ----- */
@@ -943,17 +943,21 @@ function showEditProfile(existing) {
             ${th.avatars.map(a => `<button class="pick emoji" data-av="${a}" aria-pressed="${a === sel.avatar}">${a}</button>`).join('')}
           </div>
         </div>
-        <div>
+        ${existing && !grownupUnlocked() ? `<div>
+          <span class="lbl">Grade</span>
+          <p style="margin:0">${gradeName(sel.grade)} grade${Object.keys(sel.levels).length ? ' <span class="muted">(some subjects at a different level)</span>' : ''}
+            <button class="btn ghost small" id="unlockGrade" type="button">🔒 Change (grown-ups)</button></p>
+        </div>` : `<div>
           <span class="lbl">What grade are you in?</span>
           <div class="pick-row">
             ${GRADES.map(g => `<button class="pick" data-grade="${g}" aria-pressed="${g === sel.grade}">${gradeName(g)} grade</button>`).join('')}
           </div>
-        </div>
-        <details class="levels" ${Object.keys(sel.levels).length ? 'open' : ''}>
-          <summary>Different level for some subjects? <span class="muted">(grown-ups)</span></summary>
+        </div>`}
+        ${grownupUnlocked() ? `<details class="levels" ${Object.keys(sel.levels).length ? 'open' : ''}>
+          <summary>Different level for some subjects?</summary>
           <div class="level-grid">${SUBJECT_ORDER.map(sid => `<label>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}
             <select data-level="${sid}"><option value="">Same as grade</option>${GRADES.map(g => `<option value="${g}" ${sel.levels[sid] === g ? 'selected' : ''}>${gradeName(g)} grade</option>`).join('')}</select></label>`).join('')}</div>
-        </details>
+        </details>` : ''}
         <div class="row-actions" style="justify-content:flex-start">
           <button class="btn" id="saveP">${existing ? 'Save' : `Let's go! ${th.icon}`}</button>
           ${existing ? '<button class="btn ghost small" id="switch">Switch player</button>' : ''}
@@ -965,6 +969,8 @@ function showEditProfile(existing) {
     bindAll('[data-theme]', el => { sel.theme = el.dataset.theme; applyTheme(sel.theme); draw(); });
     bindAll('[data-av]', el => { sel.avatar = el.dataset.av; draw(); });
     bindAll('[data-grade]', el => { sel.grade = +el.dataset.grade; draw(); });
+    const ug = document.getElementById('unlockGrade');
+    if (ug) ug.onclick = () => { sel.name = nm.value; showParentGate(() => { applyTheme(sel.theme); draw(); }, () => { applyTheme(sel.theme); draw(); }); };
     $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; }; });
     document.getElementById('back').onclick = () => existing ? showHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
@@ -1690,22 +1696,106 @@ function endBlaster(g, look) {
 }
 
 /* ----- Grown-ups ----- */
-function showParentGate() {
-  render(`
+/* ----- Grown-ups lock: family password (signed in) or a PIN for this device ----- */
+let grownupUntil = 0, pinFails = 0, pinLockedUntil = 0;
+const grownupUnlocked = () => Date.now() < grownupUntil;
+const unlockGrownup = () => { grownupUntil = Date.now() + 15 * 60 * 1000; };
+async function sha256(text) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+function showParentGate(then = showParents, back = showProfiles) {
+  if (grownupUnlocked()) return then();
+  screen = 'gate';
+  const signedIn = SYNC_URL && state.sync.token, pin = state.grownPin;
+  const card = inner => render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
-    <div class="card stack center">
-      <h2>Grown-ups only</h2>
-      <p class="muted">Press and hold the button for 3 seconds.</p>
-      <button class="btn hold" id="hold"><i></i>Hold me</button>
-    </div>
-  `);
-  document.getElementById('back').onclick = showProfiles;
-  const b = document.getElementById('hold'), fill = b.querySelector('i');
-  let timer;
-  const start = e => { e.preventDefault(); fill.style.transition = 'width 3s linear'; fill.style.width = '100%'; timer = setTimeout(showParents, 3000); };
-  const stop = () => { clearTimeout(timer); fill.style.transition = 'none'; fill.style.width = '0'; };
-  b.addEventListener('pointerdown', start);
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+    <div class="card stack gate" style="max-width:480px;margin:0 auto">${inner}</div>`);
+  const pass = () => { unlockGrownup(); then(); };
+  const wire = () => { document.getElementById('back').onclick = back; };
+
+  if (signedIn) {
+    card(`<h2>🔒 Grown-ups only</h2>
+      <p class="muted" style="margin:0">Enter the password for <b>${esc(state.sync.family)}</b>.</p>
+      <form id="gf" class="stack" autocomplete="on">
+        <input type="text" name="username" autocomplete="username" value="${esc(state.sync.family)}" hidden>
+        <input class="text" id="gpw" type="password" autocomplete="current-password" placeholder="Family password">
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Unlock</button></div>
+      </form>`);
+    wire();
+    document.getElementById('gpw').focus();
+    document.getElementById('gf').onsubmit = async e => {
+      e.preventDefault();
+      try { await syncCall({ action: 'verify', password: document.getElementById('gpw').value }); pass(); }
+      catch (err) { toast(/fetch|network/i.test(err.message) ? "You're offline. Connect to the internet to unlock." : err.message); }
+    };
+    return;
+  }
+
+  if (pin) {
+    card(`<h2>🔒 Grown-ups only</h2>
+      <p class="muted" style="margin:0">Enter this device's grown-up PIN.</p>
+      <form id="gf" class="stack"><input class="text pin" id="gpin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN">
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Unlock</button></div></form>
+      <details class="acct-more"><summary>Forgot the PIN?</summary>
+        ${SYNC_URL ? '<p class="muted">If you have a family account, sign in on this device instead: the family password unlocks this page.</p><button class="btn small" id="toSignIn">Sign in to my family</button>' : ''}
+        <p class="muted">Or reset it. This removes all players and progress on this device.</p>
+        <button class="btn ghost small" id="resetPin">Reset PIN and remove players</button></details>`);
+    wire();
+    document.getElementById('gpin').focus();
+    document.getElementById('gf').onsubmit = async e => {
+      e.preventDefault();
+      if (Date.now() < pinLockedUntil) return toast('Too many tries. Wait a minute.');
+      if (await sha256(pin.salt + document.getElementById('gpin').value) === pin.hash) { pinFails = 0; return pass(); }
+      if (++pinFails >= 5) { pinLockedUntil = Date.now() + 60000; pinFails = 0; }
+      toast('That PIN is not right');
+    };
+    const ts = document.getElementById('toSignIn'); if (ts) ts.onclick = () => showGateSignIn(then, back);
+    document.getElementById('resetPin').onclick = () => {
+      if (!confirm('Remove all players and progress on this device and reset the PIN? This cannot be undone.')) return;
+      state.profiles = []; state.current = null; delete state.grownPin; writeStore(); showProfiles();
+    };
+    return;
+  }
+
+  // first time on this device: a grown-up picks how to lock it
+  card(`<h2>🔒 Set up grown-up access</h2>
+    <p class="muted" style="margin:0">The grown-ups page shows progress and settings, so it needs a lock kids can't guess.</p>
+    ${SYNC_URL ? `<button class="btn" id="toSignIn">Sign in to my family account</button>
+      <p class="muted center" style="margin:0">or</p>` : ''}
+    <form id="gf" class="stack"><label class="lbl" style="margin:0">Make a PIN for this device</label>
+      <input class="text pin" id="p1" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="4 to 8 digits">
+      <input class="text pin" id="p2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Type it again">
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn ghost" type="submit">Save PIN</button></div></form>`);
+  wire();
+  const ts = document.getElementById('toSignIn'); if (ts) ts.onclick = () => showGateSignIn(then, back);
+  document.getElementById('gf').onsubmit = async e => {
+    e.preventDefault();
+    const a = document.getElementById('p1').value, b = document.getElementById('p2').value;
+    if (!/^\d{4,8}$/.test(a)) return toast('Use 4 to 8 digits');
+    if (a !== b) return toast("The PINs don't match");
+    const salt = Math.random().toString(36).slice(2);
+    state.grownPin = { salt, hash: await sha256(salt + a) }; writeStore(); toast('PIN saved'); pass();
+  };
+}
+
+function showGateSignIn(then, back) {
+  render(`<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
+    <div class="card stack" style="max-width:480px;margin:0 auto"><h2>☁️ Sign in to your family</h2>
+    <form id="sf" class="stack" autocomplete="on">
+      <input class="text" id="sfName" autocomplete="username" placeholder="Family name" autocapitalize="words">
+      <input class="text" id="sfPw" type="password" autocomplete="current-password" placeholder="Password">
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Sign in</button></div></form>
+    <p class="muted" style="margin:0">New family? You'll need an invite link from the person who shared Quest Academy.</p></div>`);
+  document.getElementById('back').onclick = () => showParentGate(then, back);
+  document.getElementById('sf').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const r = await syncCall({ action: 'login', family: document.getElementById('sfName').value, password: document.getElementById('sfPw').value });
+      await signedIn(r, () => {}); unlockGrownup(); toast('Signed in! ☁️'); then();
+    } catch (err) { toast(err.message); }
+  };
 }
 
 function trickyFacts(p) {

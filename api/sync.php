@@ -166,6 +166,12 @@ $db->prepare('UPDATE qa_tokens SET last_used = ? WHERE token_hash = ?')->execute
 
 if ($action === 'me') out(200, me_info($fam));
 
+// Unlock the grown-ups page on a signed-in device
+if ($action === 'verify') {
+  if (!password_verify((string) ($req['password'] ?? ''), $fam['pass_hash'])) fail($db, $ip, $now, 'That password is not right.');
+  out(200, ['ok' => true]);
+}
+
 if ($action === 'logout') { $db->prepare('DELETE FROM qa_tokens WHERE token_hash = ?')->execute([$tokenHash]); out(200, ['ok' => true]); }
 
 if ($action === 'change_password') {

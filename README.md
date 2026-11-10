@@ -15,7 +15,7 @@ A learning game for 2nd through 5th graders covering math, reading, writing, sci
 - **Social Studies:** maps, community, money, government, symbols & holidays, then & now.
 - **Read-aloud:** a 🔊 button reads stories, passages, questions and fact cards out loud.
 - **Spaced practice:** missed questions come back a few questions later and show up more often until they stick. Hints help without giving away the answer; the answer shows only after a second miss.
-- **Grown-ups page:** hold the button for 3 seconds on the start screen to see accuracy and mastery per mission, "needs practice" items, common math mistakes, and journal entries.
+- **Grown-ups page (locked with the family password, or a PIN on devices that are not signed in):** see accuracy and mastery per mission, "needs practice" items, common math mistakes, and journal entries.
 
 ## Playing on an iPad
 Open the site in Safari, tap **Share**, then **Add to Home Screen** (on newer iPads it's under **More**), and always play from that icon. It opens full-screen like an app. Safari can erase a website's saved progress after 7 days without a visit, but home screen apps are exempt. Progress in the home screen app and in a Safari tab are kept separately.
