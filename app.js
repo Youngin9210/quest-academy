@@ -1029,7 +1029,9 @@ function showHome() {
       <div class="mission-grid">
         ${missions.map(m => {
           const tm = m, pct = showPct(progress(p, m.id));
-          const label = POOLS[m.id] ? `${learnedCount(p, m.id)} facts learned · ${pct}%` : `${pct}% mastered`;
+          let label = POOLS[m.id] ? `${learnedCount(p, m.id)} facts learned · ${pct}%` : `${pct}% mastered`;
+          if (subj === 'typing') { const b = m.id === 'type-game' ? null : bestLessonRun(p, m.id);
+            label = m.id === 'type-game' ? (p.typeHigh ? `🏆 Your best: ${p.typeHigh.toLocaleString()}` : 'No high score yet') : b ? `⚡ Best: ${b.wpm} WPM` : 'Not played yet'; }
           return `<button class="mission" data-m="${m.id}">
             ${suggested && m.id === suggested.id ? '<span class="tag">Try me!</span>' : ''}
             <span class="icon">${tm.icon}</span>
@@ -1039,6 +1041,10 @@ function showHome() {
             <span class="mastery"><i style="width:${pct}%"></i></span>
           </button>`;
         }).join('')}
+        ${subj === 'typing' ? `<button class="mission" id="scores">
+            <span class="icon">🏆</span><span class="name">High Scores</span>
+            <span class="desc">Family leaderboard & personal bests</span>
+            <span class="mastery-label">${(() => { const t = familyBlasterScores()[0]; return t ? `Record: ${t.score.toLocaleString()} by ${esc(t.name)}` : 'No scores yet'; })()}</span></button>` : ''}
         ${subj === 'writing' && SUBJECTS.writing.journalPrompts ? `<button class="mission" id="journal">
             <span class="icon">📔</span><span class="name">My Journal</span>
             <span class="desc">Write about anything you like</span>
@@ -1054,6 +1060,7 @@ function showHome() {
   bindAll('[data-m]', el => startMission(el.dataset.m));
   bindAll('[data-s]', el => { p.subject = el.dataset.s; save(); showHome(); });
   const j = document.getElementById('journal'); if (j) j.onclick = () => showJournal();
+  const hs = document.getElementById('scores'); if (hs) hs.onclick = showHighScores;
   document.getElementById('me').onclick = () => showEditProfile(p);
   document.getElementById('coll').onclick = showCollection;
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showHome(); };
@@ -1584,13 +1591,16 @@ function finishTyping(lesson, t) {
   const p = me(), th = theme(p);
   const mins = Math.max((Date.now() - t.start) / 60000, .05);
   const wpm = Math.round(t.correct / 5 / mins), acc = Math.round(t.correct / (t.correct + t.errors) * 100);
+  const prevBest = bestLessonRun(p, lesson.id), newPB = acc >= 90 && (!prevBest || wpm > prevBest.wpm) && !!prevBest;
   p.typing = p.typing || {}; (p.typing[lesson.id] = p.typing[lesson.id] || []).push({ wpm, acc, date: today() });
   p.typing[lesson.id] = p.typing[lesson.id].slice(-30);
   p.typeMiss = p.typeMiss || {};
   Object.entries(t.missed).forEach(([k, n]) => { p.typeMiss[k] = (p.typeMiss[k] || 0) + n; });
   const goal = typeTarget(p), stars = (acc >= 90 ? 1 : 0) + (acc >= 97 ? 1 : 0) + (wpm >= goal ? 1 : 0);
   const earned = 3 + stars * 3;
-  awardFinish(p, th, earned, `
+  if (newPB) setTimeout(() => confetti('⚡'), 400);
+  awardFinish(p, th, earned + (newPB ? 2 : 0), `
+    ${newPB ? `<div class="record-banner pb">⚡ New personal best! ${prevBest.wpm} → ${wpm} WPM</div>` : ''}
     <div class="type-results">
       <div><b>${wpm}</b><span>words per minute</span></div>
       <div><b>${acc}%</b><span>accuracy</span></div>
@@ -1703,18 +1713,56 @@ function startBlaster() {
 function endBlaster(g, look) {
   const p = me(), th = theme(p);
   p.typing = p.typing || {};
-  (p.typing['type-game'] = p.typing['type-game'] || []).push({ score: g.score, zapped: g.zapped, date: today() });
-  p.typing['type-game'] = p.typing['type-game'].slice(-30);
-  const best = p.typeHigh || 0, newBest = g.score > best;
+  const familyTop = (familyBlasterScores()[0] || {}).score || 0;
+  const ts = Date.now();
+  (p.typing['type-game'] = p.typing['type-game'] || []).push({ score: g.score, zapped: g.zapped, date: today(), ts });
+  // keep each player's 10 best games plus the 20 most recent
+  const runs = p.typing['type-game'], keep = new Set([...runs.slice().sort((a, b) => b.score - a.score).slice(0, 10), ...runs.slice(-20)]);
+  p.typing['type-game'] = runs.filter(r => keep.has(r));
+  const best = p.typeHigh || 0, newBest = g.score > best && g.score > 0;
+  const familyRecord = g.score > familyTop && familyTop > 0;
   if (newBest) p.typeHigh = g.score;
-  const earned = Math.min(25, 2 + Math.floor(g.score / 100));
+  const earned = Math.min(25, 2 + Math.floor(g.score / 100)) + (familyRecord ? 5 : newBest ? 2 : 0);
+  if (familyRecord || newBest) setTimeout(() => confetti('🏆'), 400);
   awardFinish(p, th, earned, `
+    ${familyRecord ? '<div class="record-banner">🏆 New family record! 🏆</div>' : newBest ? '<div class="record-banner pb">⭐ New personal best! ⭐</div>' : ''}
     <div class="type-results">
-      <div><b>${g.score}</b><span>score</span></div>
+      <div><b>${g.score.toLocaleString()}</b><span>score</span></div>
       <div><b>${g.zapped}</b><span>words zapped</span></div>
-      <div><b>${newBest ? '🏆' : (p.typeHigh || 0)}</b><span>${newBest ? 'New high score!' : 'high score'}</span></div>
+      <div><b>${(p.typeHigh || 0).toLocaleString()}</b><span>your best</span></div>
     </div>
-    ${g.zapped < 10 ? '<p class="muted">Zap 10 words in one game to find a new friend!</p>' : ''}`, startBlaster, g.zapped >= 10, 'Game over!');
+    ${g.zapped < 10 ? '<p class="muted">Zap 10 words in one game to find a new friend!</p>' : ''}
+    <h2 style="margin-top:6px">🏆 High Scores</h2>${highScoreBoard(ts)}`, startBlaster, g.zapped >= 10, 'Game over!');
+}
+
+/* ----- High scores (only players in this family / on this device) ----- */
+const MEDALS = ['🥇', '🥈', '🥉'];
+function familyBlasterScores() {
+  return state.profiles.flatMap(pl => ((pl.typing || {})['type-game'] || [])
+    .filter(r => r.score > 0).map(r => ({ ...r, name: pl.name, avatar: pl.avatar, pid: pl.id })))
+    .sort((a, b) => b.score - a.score || (a.ts || 0) - (b.ts || 0));
+}
+const bestLessonRun = (pl, id) => ((pl.typing || {})[id] || []).filter(r => r.acc >= 90).sort((a, b) => b.wpm - a.wpm)[0] || null;
+function highScoreBoard(highlightTs) {
+  const top = familyBlasterScores().slice(0, 10);
+  if (!top.length) return '<p class="muted center">No scores yet. Play a game to get on the board!</p>';
+  return `<ol class="scoreboard">${top.map((r, i) => `<li class="${highlightTs && r.ts === highlightTs ? 'mine' : ''}">
+      <span class="rank">${MEDALS[i] || i + 1}</span><span class="who">${r.avatar} ${esc(r.name)}</span>
+      <span class="pts">${r.score.toLocaleString()}</span><span class="when muted">${esc(r.date || '')}</span></li>`).join('')}</ol>`;
+}
+function showHighScores() {
+  const p = me(), th = theme(p), look = BLASTER[p.theme] || BLASTER.space;
+  screen = 'scores';
+  render(`
+    <div class="topbar"><button class="btn ghost small" id="back">← Back</button><span class="chip">🏆 High Scores</span><span></span></div>
+    <div class="card stack"><h2>${look.thing} ${look.name}</h2>${highScoreBoard()}
+      <div class="row-actions"><button class="btn" id="play">Play ${look.name}</button></div></div>
+    <div class="card stack" style="margin-top:16px"><h2>⚡ ${esc(p.name)}'s personal bests</h2>
+      <table class="bests">${TYPING_LESSONS.filter(l => !l.game).map(l => { const b = bestLessonRun(p, l.id);
+        return `<tr><td>${l.icon} ${l.name}</td><td>${b ? `<b>${b.wpm} WPM</b> <span class="muted">${b.acc}% accurate</span>` : '<span class="muted">not played yet</span>'}</td></tr>`; }).join('')}</table>
+      <p class="muted" style="margin:0">Personal bests count when accuracy is 90% or higher.</p></div>`);
+  document.getElementById('back').onclick = showHome;
+  document.getElementById('play').onclick = () => startTyping('type-game');
 }
 
 /* ----- Grown-ups ----- */

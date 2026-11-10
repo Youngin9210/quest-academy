@@ -409,3 +409,15 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .gate .divider::before, .gate .divider::after { content: ''; flex: 1; height: 2px; background: var(--card-border); border-radius: 2px; }
 .gate details { text-align: left; }
 .gate details .btn { width: auto; }
+
+/* ---------- High scores ---------- */
+.scoreboard { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.scoreboard li { display: grid; grid-template-columns: 2.4em 1fr auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: rgba(127,127,127,.12); font-size: 1.15rem; }
+.scoreboard li.mine { outline: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.scoreboard .rank { font-size: 1.4rem; text-align: center; font-weight: 700; }
+.scoreboard .pts { font-weight: 700; font-variant-numeric: tabular-nums; }
+.scoreboard .when { font-size: .85rem; }
+.record-banner { font-size: 1.5rem; font-weight: 700; padding: 10px 16px; border-radius: 14px; background: var(--accent); color: var(--accent-ink); animation: pop .6s ease-out; }
+.record-banner.pb { background: color-mix(in srgb, var(--accent2) 35%, transparent); color: var(--ink); }
+.bests { width: 100%; } .bests td { padding: 8px 4px; font-size: 1.1rem; }
+@media (max-width: 480px) { .scoreboard .when { display: none; } .scoreboard li { grid-template-columns: 2.2em 1fr auto; } }

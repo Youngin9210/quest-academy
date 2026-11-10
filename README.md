@@ -10,7 +10,7 @@ A learning game for 2nd through 5th graders covering math, reading, writing, sci
 - **Math (4th–5th):** multi-digit multiplication, long division (with remainders and 2-digit divisors), fractions (equivalent, compare, add/subtract, multiply), decimals, area/perimeter/volume, and bigger word problems including "times as many".
 - **Reading:** word sounds, word power (prefixes, suffixes, synonyms), story passages and nonfiction passages with comprehension questions.
 - **Writing:** spelling (hear a real person say the word, slow it down, then type it), fix-it sentences, sentence building, grammar, and a journal with daily prompts.
-- **Typing:** home row, top row, bottom row and sentence lessons with a color-coded finger guide, plus a themed falling-words game with combos, levels and a high score. Best with a real keyboard.
+- **Typing:** home row, top row, bottom row and sentence lessons with a color-coded finger guide, plus a themed falling-words game with combos, levels, a family high-score board, and personal bests for every lesson. Best with a real keyboard.
 - **Science:** matter, plants, animals, weather, forces & magnets, Earth. Each mission starts with short fact cards.
 - **Social Studies:** maps, community, money, government, symbols & holidays, then & now.
 - **Read-aloud:** a 🔊 button reads stories, passages, questions and fact cards out loud.
