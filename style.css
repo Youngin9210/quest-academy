@@ -335,3 +335,12 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .level-up { position: absolute; inset: 0; display: grid; place-items: center; font-size: 3rem; font-weight: 700; color: var(--accent); opacity: 0; pointer-events: none; z-index: 2; }
 .level-up.show { animation: lvl 1.4s ease-out; }
 @keyframes lvl { 0% { opacity: 0; transform: scale(.6); } 20% { opacity: 1; transform: scale(1.1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+
+/* ---------- Family account ---------- */
+.recovery-box { border: 3px dashed var(--accent); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.code { font-size: 1.6rem; font-weight: 700; letter-spacing: .08em; font-family: ui-monospace, Menlo, monospace; user-select: all; }
+.acct-more { border-top: 1px solid var(--card-border); padding-top: 10px; }
+.acct-more summary { cursor: pointer; font-weight: 600; font-size: 1.1rem; padding: 4px 0; }
+.acct-more[open] > *:not(summary) { margin-top: 8px; }
+.acct-more .text { margin-bottom: 4px; }
+.invite-link .text { max-width: none; font-size: 1rem; }

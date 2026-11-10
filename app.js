@@ -705,7 +705,7 @@ function showProfiles() {
     <div class="row-actions" style="margin-top:28px">
       <button class="btn ghost small" id="parents">👪 Grown-ups</button>
     </div>
-    ${SYNC_URL && !state.sync.code ? '<p class="muted center" style="margin-top:12px">☁️ Grown-ups: turn on family sync to share progress between devices.</p>' : ''}
+    ${SYNC_URL && !state.sync.token ? '<p class="muted center" style="margin-top:12px">☁️ Grown-ups: sign in to your family to share progress between devices.</p>' : ''}
   `);
   bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
   document.getElementById('add').onclick = () => showEditProfile();
@@ -1524,7 +1524,7 @@ function showParents() {
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
     <h1>Progress</h1>
-    <p class="muted">${SYNC_URL && state.sync.code ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
+    <p class="muted">${SYNC_URL && state.sync.token ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
     ${syncCardHtml()}
     ${state.profiles.length ? '' : '<p>No players yet.</p>'}
     <div class="stack">
@@ -1584,7 +1584,8 @@ function missionOf(k) {
    Each device keeps working offline; changes are merged per player.
    ========================================================= */
 const SYNC_URL = /github\.io$/.test(location.hostname) ? null : 'api/sync.php';
-state.sync = state.sync || { code: '', last: 0, tombs: [], ok: 0 };
+state.sync = state.sync || { token: '', family: '', admin: false, last: 0, tombs: [], ok: 0 };
+state.sync.tombs = state.sync.tombs || [];
 state.device = state.device || ('d' + Math.random().toString(36).slice(2, 10));
 const snapshot = {};             // player id -> JSON last known to match the server/our own save
 const lastPoints = {};           // player id -> points at last save, to count what THIS device earned
@@ -1607,14 +1608,15 @@ function markChanged() {
   });
 }
 function scheduleSync(delay = 1500) {
-  if (!SYNC_URL || !state.sync.code) return;
+  if (!SYNC_URL || !state.sync.token) return;
   clearTimeout(syncTimer); syncTimer = setTimeout(doSync, delay);
 }
 
 async function syncCall(body) {
   const r = await fetch(SYNC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ passcode: state.sync.code, ...body }), cache: 'no-store' });
+    body: JSON.stringify({ token: state.sync.token, ...body }), cache: 'no-store' });
   const j = await r.json().catch(() => ({ error: 'Server error' }));
+  if (r.status === 401 && state.sync.token) { state.sync.token = ''; writeStore(); }   // this device was signed out
   if (!r.ok) throw new Error(j.error || 'Sync failed');
   return j;
 }
@@ -1653,13 +1655,14 @@ function mergePlayer(a, b) {
 }
 
 async function doSync() {
-  if (!SYNC_URL || !state.sync.code || syncing) return;
+  if (!SYNC_URL || !state.sync.token || syncing) return;
   if (!navigator.onLine) { lastSyncError = 'offline'; return; }
   syncing = true;
   let changedView = false;
   try {
     markChanged();
     const pulled = await syncCall({ action: 'pull', since: state.sync.last || 0 });
+    state.sync.family = pulled.family; state.sync.admin = !!pulled.admin;
     for (const r of pulled.players) {
       const i = state.profiles.findIndex(p => p.id === r.id), local = state.profiles[i];
       if (r.deleted) {
@@ -1699,33 +1702,166 @@ if (SYNC_URL) {
 
 function syncCardHtml() {
   if (!SYNC_URL) return '';
-  if (state.sync.code) {
-    const when = state.sync.ok ? new Date(state.sync.ok).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet';
-    return `<div class="card stack"><h2>☁️ Family sync is on</h2>
-      <p style="margin:0">This device shares progress with your family's other devices.<br><span class="muted">Last synced: ${when}${lastSyncError ? ` · ⚠️ ${esc(lastSyncError === 'offline' ? 'offline, will sync later' : lastSyncError)}` : ''}</span></p>
-      <div class="row-actions" style="justify-content:flex-start"><button class="btn small" id="syncNow">Sync now</button><button class="btn ghost small" id="syncOff">Disconnect this device</button></div></div>`;
+  const s = state.sync;
+  const rec = s.pendingRecovery ? `<div class="recovery-box"><b>📝 Write down your recovery code</b>
+      <div class="code">${esc(s.pendingRecovery)}</div>
+      <span class="muted">If you ever forget your password, this code lets you set a new one. It won't be shown again.</span>
+      <div><button class="btn small" id="recDone">I wrote it down</button></div></div>` : '';
+  if (s.token) {
+    const when = s.ok ? new Date(s.ok).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet';
+    return `<div class="card stack" id="acct"><h2>☁️ ${esc(s.family || 'Your family')}</h2>
+      ${rec}
+      <p style="margin:0">This device is signed in. Progress is shared with your family's other devices.<br>
+        <span class="muted">Last synced: ${when}${lastSyncError ? ` · ⚠️ ${esc(lastSyncError === 'offline' ? 'offline, will sync later' : lastSyncError)}` : ''}</span></p>
+      <div class="row-actions" style="justify-content:flex-start">
+        <button class="btn small" id="syncNow">Sync now</button>
+        <button class="btn ghost small" id="signOut">Sign out of this device</button>
+      </div>
+      ${s.admin ? `<details class="acct-more"><summary>👋 Invite a family</summary>
+        <p class="muted">Makes a one-time link for another family to create their own account. They'll only ever see their own kids, and they can't see that other families exist. Links expire after 14 days.</p>
+        <button class="btn small" id="mkInvite">Make an invite link</button><div id="inviteOut"></div></details>
+        <details class="acct-more"><summary>🔑 Help a family that's locked out</summary>
+        <p class="muted">Gives them a new temporary password. Their kids' progress isn't shown or changed.</p>
+        <input class="text" id="resetName" placeholder="Their family name" autocomplete="off">
+        <button class="btn small" id="doReset">Reset their password</button><div id="resetOut"></div></details>` : ''}
+      <details class="acct-more"><summary>⚙️ Account settings</summary>
+        <label class="lbl">Family name</label>
+        <input class="text" id="newName" value="${esc(s.family || '')}" autocomplete="off"> <button class="btn small" id="doRename">Rename</button>
+        <label class="lbl" style="margin-top:14px">Change password</label>
+        <input class="text" id="oldPw" type="password" placeholder="Current password" autocomplete="current-password">
+        <input class="text" id="newPw" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" style="margin-top:8px">
+        <button class="btn small" id="doPw">Change password</button>
+        <label class="lbl" style="margin-top:14px">New recovery code</label>
+        <input class="text" id="recPw" type="password" placeholder="Your password" autocomplete="current-password">
+        <button class="btn small" id="doRec">Show a new recovery code</button>
+      </details></div>`;
   }
-  return `<div class="card stack"><h2>☁️ Turn on family sync</h2>
-    <p style="margin:0" class="muted">Enter your family code once on each device. Then players and progress are the same everywhere.</p>
-    <input class="text" id="famcode" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Family code">
-    <div class="row-actions" style="justify-content:flex-start"><button class="btn small" id="syncOn">Connect</button></div></div>`;
+  return `<div class="card stack" id="acct"><h2>☁️ Sign in to your family</h2>
+    <p style="margin:0" class="muted">Sign in once on each device and your kids' progress follows them everywhere.</p>
+    <input class="text" id="famName" placeholder="Family name" autocomplete="username" autocapitalize="words">
+    <input class="text" id="famPw" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="row-actions" style="justify-content:flex-start"><button class="btn small" id="signIn">Sign in</button></div>
+    <details class="acct-more"><summary>Forgot your password?</summary>
+      <input class="text" id="rcName" placeholder="Family name" autocomplete="username">
+      <input class="text" id="rcCode" placeholder="Recovery code (xxxx-xxxx-xxxx-xxxx)" autocomplete="off" autocapitalize="none" style="margin-top:8px">
+      <input class="text" id="rcPw" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" style="margin-top:8px">
+      <button class="btn small" id="doRecover">Set new password</button>
+      <p class="muted">No recovery code? Ask the person who invited you to reset your password.</p></details>
+    <p class="muted" style="margin:0">New family? You'll need an invite link from the person who shared Quest Academy with you.</p></div>`;
 }
+
+async function signedIn(res, rerender) {
+  Object.assign(state.sync, { token: res.token, family: res.family, admin: !!res.admin, last: 0, ok: 0 });
+  if (res.recovery) state.sync.pendingRecovery = res.recovery;
+  delete state.sync.code;
+  writeStore(); await doSync(); rerender();
+}
+
 function bindSyncCard(rerender) {
-  const on = document.getElementById('syncOn'), now = document.getElementById('syncNow'), off = document.getElementById('syncOff');
-  if (on) on.onclick = async () => {
-    const code = document.getElementById('famcode').value.trim(); if (!code) return;
-    const prev = state.sync.code; state.sync.code = code;
-    try { await syncCall({ action: 'check' }); state.sync.last = 0; writeStore(); toast('Connected! Syncing…'); await doSync(); rerender(); }
-    catch (e) { state.sync.code = prev; writeStore(); toast(e.message); }
-  };
-  if (now) now.onclick = async () => { await doSync(); toast(lastSyncError ? '⚠️ ' + lastSyncError : 'Synced ✓'); rerender(); };
-  if (off) off.onclick = () => {
-    if (!confirm('Disconnect this device from family sync? Progress on this device stays here.')) return;
-    state.sync = { code: '', last: 0, tombs: [], ok: 0 }; writeStore(); rerender();
+  const $ = id => document.getElementById(id);
+  const val = id => ($(id) || {}).value || '';
+  const act = async (fn) => { try { await fn(); } catch (e) { toast(e.message); } };
+  if ($('recDone')) $('recDone').onclick = () => { delete state.sync.pendingRecovery; writeStore(); rerender(); };
+  if ($('signIn')) $('signIn').onclick = () => act(async () => {
+    if (!val('famName').trim() || !val('famPw')) return toast('Enter your family name and password');
+    await signedIn(await syncCall({ action: 'login', family: val('famName'), password: val('famPw') }), rerender);
+    toast('Signed in! ☁️');
+  });
+  if ($('doRecover')) $('doRecover').onclick = () => act(async () => {
+    await signedIn(await syncCall({ action: 'recover', family: val('rcName'), recovery: val('rcCode'), password: val('rcPw') }), rerender);
+    toast('New password set. Signed in!');
+  });
+  if ($('syncNow')) $('syncNow').onclick = async () => { await doSync(); toast(lastSyncError ? '⚠️ ' + lastSyncError : 'Synced ✓'); rerender(); };
+  if ($('signOut')) $('signOut').onclick = () => act(async () => {
+    if (!confirm(`Sign this device out of ${state.sync.family}? The kids' players will be removed from this device but stay safe in your account.`)) return;
+    await doSync();
+    if (state.profiles.some(p => p.dirty)) { if (!confirm('Some progress has not synced yet (are you offline?). Sign out anyway and lose it on this device?')) return; }
+    try { await syncCall({ action: 'logout' }); } catch (e) { /* already signed out */ }
+    state.profiles = []; state.current = null;
+    state.sync = { token: '', family: '', admin: false, last: 0, tombs: [], ok: 0 };
+    Object.keys(snapshot).forEach(k => delete snapshot[k]);
+    writeStore(); toast('Signed out'); rerender();
+  });
+  if ($('mkInvite')) $('mkInvite').onclick = () => act(async () => {
+    const r = await syncCall({ action: 'invite' });
+    const link = `${location.origin}${location.pathname}#invite=${r.invite}`;
+    $('inviteOut').innerHTML = `<div class="invite-link"><input class="text" readonly value="${esc(link)}" id="invLink"></div>
+      <div class="row-actions" style="justify-content:flex-start">
+        <button class="btn small" id="copyInv">Copy link</button>${navigator.share ? '<button class="btn ghost small" id="shareInv">Share…</button>' : ''}</div>
+      <p class="muted">Works once, for one family, for ${r.expires_days} days.</p>`;
+    $('copyInv').onclick = async () => { try { await navigator.clipboard.writeText(link); toast('Link copied'); } catch (e) { $('invLink').select(); } };
+    if ($('shareInv')) $('shareInv').onclick = () => navigator.share({ title: 'Quest Academy', text: 'Here is your invite to Quest Academy, a learning game for kids:', url: link }).catch(() => {});
+  });
+  if ($('doReset')) $('doReset').onclick = () => act(async () => {
+    const r = await syncCall({ action: 'admin_reset', family: val('resetName') });
+    $('resetOut').innerHTML = `<p>New temporary password for <b>${esc(r.family)}</b>:</p><div class="code">${esc(r.temp_password)}</div>
+      <p class="muted">Send it to them. They sign in with it, then change it under Account settings.</p>`;
+  });
+  if ($('doRename')) $('doRename').onclick = () => act(async () => {
+    const r = await syncCall({ action: 'rename', family: val('newName') }); state.sync.family = r.family; writeStore(); toast('Renamed'); rerender();
+  });
+  if ($('doPw')) $('doPw').onclick = () => act(async () => {
+    await syncCall({ action: 'change_password', old: val('oldPw'), password: val('newPw') }); toast('Password changed'); rerender();
+  });
+  if ($('doRec')) $('doRec').onclick = () => act(async () => {
+    const r = await syncCall({ action: 'new_recovery', password: val('recPw') }); state.sync.pendingRecovery = r.recovery; writeStore(); rerender();
+  });
+}
+
+/* ----- Invite link: create a family account ----- */
+async function showInvite(code) {
+  history.replaceState(null, '', location.pathname);
+  screen = 'invite'; applyTheme('space');
+  if (state.sync.token) {
+    render(`<div class="card stack center" style="margin-top:30px"><h2>You're already signed in</h2>
+      <p>This device is signed in to <b>${esc(state.sync.family)}</b>. To create a different family, sign out first on the Grown-ups page.</p>
+      <div class="row-actions"><button class="btn" id="ok">OK</button></div></div>`);
+    document.getElementById('ok').onclick = showProfiles; return;
+  }
+  try { await syncCall({ action: 'invite_check', invite: code }); }
+  catch (e) {
+    render(`<div class="card stack center" style="margin-top:30px"><h2>Invite link not working</h2><p>${esc(e.message)}</p>
+      <div class="row-actions"><button class="btn" id="ok">OK</button></div></div>`);
+    document.getElementById('ok').onclick = showProfiles; return;
+  }
+  render(`
+    <div class="hero stack"><div class="big">🚀🐠🐶🧁</div><h1>Welcome to Quest Academy!</h1>
+      <p class="muted" style="font-size:1.15rem">You've been invited. Create your family's account so your kids' progress syncs across your devices.</p></div>
+    <div class="card stack" style="max-width:520px;margin:20px auto 0">
+      <label class="lbl" for="suName">Family name</label>
+      <input class="text" id="suName" placeholder="e.g. The Garcias" autocomplete="username" autocapitalize="words" maxlength="40">
+      <span class="muted" style="display:block;margin-top:-6px">You'll type this to sign in on other devices.</span>
+      <label class="lbl" for="suPw">Password</label>
+      <input class="text" id="suPw" type="password" placeholder="8+ characters" autocomplete="new-password">
+      <input class="text" id="suPw2" type="password" placeholder="Type it again" autocomplete="new-password">
+      <p class="muted" style="margin:0">🔒 Your family is private: nobody else can see your kids or their progress. Only first names, game progress and journal writing are stored. No emails.</p>
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="suGo">Create our family</button></div>
+    </div>`);
+  document.getElementById('suGo').onclick = async () => {
+    const name = document.getElementById('suName').value.trim(), pw = document.getElementById('suPw').value;
+    if (pw !== document.getElementById('suPw2').value) return toast("Passwords don't match");
+    try {
+      const r = await syncCall({ action: 'signup', invite: code, family: name, password: pw });
+      await signedIn(r, () => {});
+      render(`<div class="card stack center" style="margin-top:30px;max-width:560px;margin-left:auto;margin-right:auto">
+        <h1>🎉 Welcome, ${esc(r.family)}!</h1>
+        <div class="recovery-box"><b>📝 Write down your recovery code</b><div class="code">${esc(r.recovery)}</div>
+          <span class="muted">If you ever forget your password, this code lets you set a new one. It won't be shown again.</span></div>
+        <p>Next: add your kids as players. On your other devices, open this site, tap <b>Grown-ups</b>, and sign in with your family name and password.</p>
+        <div class="row-actions"><button class="btn" id="go">I wrote it down. Let's go!</button></div></div>`);
+      document.getElementById('go').onclick = () => { delete state.sync.pendingRecovery; writeStore(); showProfiles(); };
+    } catch (e) { toast(e.message); }
   };
 }
 
 /* ---------- boot ---------- */
-if (me()) showHome(); else showProfiles();
-if (SYNC_URL && state.sync.code) doSync();
+const inviteCode = SYNC_URL && (location.hash.match(/^#invite=([a-f0-9]{32})$/) || [])[1];
+if (inviteCode) showInvite(inviteCode);
+else if (me()) showHome(); else showProfiles();
+if (SYNC_URL && state.sync.code && !state.sync.token) {
+  // devices set up with the first version's single family code move into the owner's family account
+  syncCall({ action: 'legacy', passcode: state.sync.code })
+    .then(r => signedIn(r, () => { if (!game && (screen === 'home' || screen === 'profiles')) (me() ? showHome : showProfiles)(); }))
+    .catch(() => { delete state.sync.code; writeStore(); });
+} else if (SYNC_URL && state.sync.token) doSync();
 })();
