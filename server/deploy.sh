@@ -10,7 +10,7 @@ OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 git archive HEAD | tar -x -C "$OUT"
 chmod 755 "$OUT"                     # mktemp makes a private folder; the site root must stay public
 rsync -az --delete -e "ssh -i $KEY -p $SG_PORT -o StrictHostKeyChecking=accept-new" \
-  --exclude '.git*' --exclude '.claude' --exclude '.impeccable' --exclude 'server' --exclude '*.md' --exclude '.DS_Store' --exclude '.nojekyll' \
+  --exclude '.git*' --exclude '.claude' --exclude '.impeccable' --exclude 'server' --exclude 'README.md' --exclude 'DESIGN.md' --exclude 'PRODUCT.md' --exclude '.DS_Store' --exclude '.nojekyll' \
   "$OUT/" "$SG_USER@$SG_HOST:$SG_PATH/"
 # make sure the site still loads
 code=$(curl -s -o /dev/null -w '%{http_code}' "https://learn.kmydev.com/?deploycheck=$RANDOM")
