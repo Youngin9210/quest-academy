@@ -421,3 +421,21 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .record-banner.pb { background: color-mix(in srgb, var(--accent2) 35%, transparent); color: var(--ink); }
 .bests { width: 100%; } .bests td { padding: 8px 4px; font-size: 1.1rem; }
 @media (max-width: 480px) { .scoreboard .when { display: none; } .scoreboard li { grid-template-columns: 2.2em 1fr auto; } }
+
+/* ---------- Daily Quest ---------- */
+.quest-card {
+  width: 100%; text-align: left; color: var(--ink);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  border-color: var(--accent);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 26%, var(--card)), var(--card) 70%);
+}
+.quest-card .quest-icon { font-size: 2.8rem; line-height: 1; }
+.quest-card .quest-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; }
+.quest-card .quest-text b { font-size: 1.45rem; }
+.quest-card .quest-go {
+  background: var(--accent); color: var(--accent-ink); border-radius: 999px;
+  padding: 10px 22px; font-weight: 700; font-size: 1.15rem; box-shadow: var(--press);
+}
+.quest-card.done { border-color: var(--card-border); background: var(--card); }
+.quest-card.done .quest-text b { font-size: 1.25rem; }
+.quest-streak-big { font-size: 1.4rem; font-weight: 700; margin: 0; color: var(--accent-text); }

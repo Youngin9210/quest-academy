@@ -4,6 +4,7 @@ A learning game for 2nd through 5th graders covering math, reading, writing, sci
 
 ## What's in it
 - **4 worlds to pick from:** Space Explorers, Ocean Adventure, Pet Rescue, Magic Bakery. Each player picks her own world and can switch any time.
+- **Daily Quest:** one 10-question mix a day across every subject. Up to 4 questions bring back things she missed; the rest come from her least-practiced missions. The first quest each day gives +10 bonus points and a collectible, and there's a quest streak. Grown-ups see how many quests she did in the last 7 days.
 - **One player, every subject:** points, the daily streak and collectibles grow from every subject.
 - **Grades 2–5, per subject:** each player has a grade, and grown-ups can set a different level for any subject (for example 3rd grade, but 4th grade math).
 - **Math (2nd–3rd):** add & subtract facts up to 20, place value, 2-digit add & subtract, times & divide facts, word problems, and a multiple choice mission. Wrong choices are common mistakes (forgot to carry, mixed up < and >) and explain that mistake.

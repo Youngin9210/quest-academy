@@ -1023,6 +1023,7 @@ function showHome() {
         <h1>${th.title}</h1>
         <p class="muted" style="font-size:1.15rem;margin:6px 0 0">Pick a subject and a mission, ${th.playerWord.toLowerCase()}!</p>
       </div>
+      ${questCardHtml(p)}
       <div class="subject-tabs" role="tablist">
         ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}">${SUBJECTS[s].icon} ${SUBJECTS[s].name}</button>`).join('')}
       </div>
@@ -1058,6 +1059,7 @@ function showHome() {
     </div>
   `);
   bindAll('[data-m]', el => startMission(el.dataset.m));
+  document.getElementById('quest').onclick = startQuest;
   bindAll('[data-s]', el => { p.subject = el.dataset.s; save(); showHome(); });
   const j = document.getElementById('journal'); if (j) j.onclick = () => showJournal();
   const hs = document.getElementById('scores'); if (hs) hs.onclick = showHighScores;
@@ -1168,6 +1170,7 @@ function nextQuestion() {
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
   if (due >= 0) q = game.retry.splice(due, 1)[0].q;
+  else if (game.quest) { const slot = game.slots[game.qi++]; q = slot.make(atLevel(me(), slot.subject), game); q.slot = slot; }
   else if (game.queue) q = bankQuestion(game.queue[game.qi++], p);
   else if (game.missionId === 'story' || (STORY_TYPES[game.missionId] && (game.n === 3 || game.n === 7))) {
     // word problems: every question in the Story mission, and 2 of 10 elsewhere
@@ -1191,7 +1194,9 @@ function nextQuestion() {
 }
 
 function drawPlay() {
-  const p = me(), th = theme(p), tm = BANK[game.missionId] ? BANK[game.missionId].mission : th.missions[game.missionId];
+  const p = me(), th = theme(p), qs = game.q.slot;
+  const tm = qs ? { icon: '⭐', name: qs.review ? '🔁 Practice again' : `${SUBJECTS[qs.subject].icon} ${SUBJECTS[qs.subject].name}` }
+    : BANK[game.missionId] ? BANK[game.missionId].mission : th.missions[game.missionId];
   const pct = (game.n / game.len) * 100;
   const q = game.q;
   render(`
@@ -1258,6 +1263,13 @@ function press(k) {
   updateAnswer();
 }
 
+// bring a missed question back a few questions later (in the Daily Quest only once, so the mix stays mixed)
+function pushRetry() {
+  if (game.quest && game.q.retried) return;
+  game.q.retried = true;
+  game.retry.push({ q: game.q, at: game.n + 3 });
+}
+
 // Shared success path for typed and tapped answers
 function answeredRight(p, th) {
   game.locked = true;
@@ -1285,11 +1297,11 @@ function choose(i) {
   const left = $app.querySelectorAll('[data-c]:not(:disabled)').length;
   if (game.tries === 1 && left > 1) {
     record(p, game.q.key, false); save();
-    game.retry.push({ q: game.q, at: game.n + 3 });
+    pushRetry();
     fb.className = 'feedback bad'; fb.textContent = pick(th.oops);
     hint.innerHTML = why + game.q.hint(false);
   } else {
-    if (game.tries === 1) { record(p, game.q.key, false); game.retry.push({ q: game.q, at: game.n + 3 }); }
+    if (game.tries === 1) { record(p, game.q.key, false); pushRetry(); }
     save();
     game.locked = true;
     $app.querySelectorAll('[data-c]').forEach((b, j) => { if (game.q.choices[j].correct) b.classList.add('good'); });
@@ -1316,7 +1328,7 @@ function judge(correct, ui) {
   sfx.bad(); if (ui.bad) ui.bad();
   if (game.tries === 1) {
     record(p, game.q.key, false); save();
-    game.retry.push({ q: game.q, at: game.n + 3 });
+    pushRetry();
     fb.className = 'feedback bad'; fb.textContent = pick(th.oops);
     hint.innerHTML = game.q.hint(false);
     if (ui.retry) ui.retry();
@@ -1376,7 +1388,7 @@ function check() {
   if (game.tries === 1) {
     record(p, game.q.key, false); save();
     // bring this one back a few questions later
-    game.retry.push({ q: game.q, at: game.n + 3 });
+    pushRetry();
     fb.className = 'feedback bad'; fb.textContent = pick(th.oops);
     hint.innerHTML = game.q.hint(false);
     game.input = ''; setTimeout(updateAnswer, 350);
@@ -1408,6 +1420,7 @@ function touchStreak(p) {
 }
 
 function finishMission() {
+  if (game.quest) return finishQuest();
   const p = me(), th = theme(p);
   const m = p.missions[game.missionId] || (p.missions[game.missionId] = { plays: 0, history: [] });
   m.plays++; m.history = [...m.history, game.firstTry].slice(-20);
@@ -1443,6 +1456,147 @@ function finishMission() {
   `);
   document.getElementById('again').onclick = () => startMission(missionId);
   document.getElementById('coll').onclick = showCollection;
+  document.getElementById('home').onclick = showHome;
+}
+
+/* =========================================================
+   Daily Quest: one short mix a day. Questions she missed come
+   back, the rest come from her least-practiced missions.
+   ========================================================= */
+const QUEST_LEN = 10, QUEST_BONUS = 10;
+const QUEST_SUBJECTS = ['math', 'reading', 'math', 'writing', 'science', 'math', 'social', 'reading', 'writing', 'science'];
+
+// missions that can lend single questions (story passages are too long for a mix)
+function questMissions(p, subj) {
+  const lvl = levelOf(p, subj);
+  if (subj === 'math') return (lvl >= 4 ? MISSIONS45 : MISSIONS).map(m => m.id);
+  const v = atLevel(p, subj);
+  return (SUBJECTS[subj].missions || []).filter(m => m.questions && (!m.grades || m.grades.includes(lvl)) && bankItems(m, v).length).map(m => m.id);
+}
+
+function mathMaker(mid) {
+  return (p, g) => {
+    if (mid === 'story') return makeStory(weightedPick(p, storyTypesFor('story', p), t => 'wp-' + t), p, p.grade >= 3);
+    if (POOLS[mid]) return factQuestion(chooseFact(p, mid, g.recent));
+    return GENERATORS[mid](p);
+  };
+}
+function bankMaker(mid) {
+  return (p, g) => {
+    const items = bankItems(BANK[mid].mission, p).filter(q => !g.used.has(q.id));
+    const q = weightedPick(p, items.length ? items : bankItems(BANK[mid].mission, p), x => 'q:' + x.id);
+    g.used.add(q.id);
+    return bankQuestion({ q }, p);
+  };
+}
+
+// a question that brings back one thing she missed
+function reviewSlot(k, subject) {
+  const mid = missionOf(k), slot = make => ({ subject, mid, review: true, make });
+  if (k.startsWith('q:')) {
+    const hit = QINDEX[k.slice(2)];
+    if (!hit || (hit.q.type === 'spell' && !(window.SPELL_AUDIO && SPELL_AUDIO[hit.q.word]))) return null;
+    return slot((p, g) => { g.used.add(hit.q.id); return bankQuestion({ q: hit.q }, p); });
+  }
+  if (POOLS[mid] && POOLS[mid].includes(k)) return slot(() => factQuestion(k));
+  if (k.startsWith('wp-')) return slot(p => makeStory(k.slice(3), p, p.grade >= 3));
+  if (k.startsWith('mc-') && CHOICE_TYPES[k.slice(3)]) return slot(p => CHOICE_TYPES[k.slice(3)](p));
+  if (GENERATORS[mid]) return slot(p => GENERATORS[mid](p));
+  return null;
+}
+
+function buildQuest(p) {
+  const subjects = ['math', 'reading', 'writing', 'science', 'social'].filter(s => SUBJECTS[s]);
+  const owner = {};   // mission id -> subject, only missions at her level
+  subjects.forEach(s => questMissions(p, s).forEach(id => { owner[id] = s; }));
+  // up to 4 things she missed and hasn't mastered yet, no more than 2 from one mission
+  const perMission = {};
+  const review = Object.entries(p.stats)
+    .filter(([k, s]) => s.w > 0 && s.box < 3 && owner[missionOf(k)])
+    .sort((a, b) => (b[1].w - b[1].r * .5) - (a[1].w - a[1].r * .5))
+    .filter(([k]) => { const m = missionOf(k); perMission[m] = (perMission[m] || 0) + 1; return perMission[m] <= 2; })
+    .map(([k]) => reviewSlot(k, owner[missionOf(k)])).filter(Boolean).slice(0, 4);
+  // the rest: her least-practiced missions, rotating through subjects
+  const fresh = [], usedM = {};
+  for (let i = 0; fresh.length < QUEST_LEN - review.length && i < 40; i++) {
+    const subj = QUEST_SUBJECTS[i % QUEST_SUBJECTS.length];
+    const ids = questMissions(p, subj).filter(id => (usedM[id] || 0) < 2);
+    if (!ids.length) continue;
+    const v = atLevel(p, subj);
+    const low = ids.map(id => [id, progress(v, id) + Math.random() * .15]).sort((a, b) => a[1] - b[1]);
+    const mid = low[0][0];
+    usedM[mid] = (usedM[mid] || 0) + 1;
+    fresh.push({ subject: subj, mid, make: subj === 'math' ? mathMaker(mid) : bankMaker(mid) });
+  }
+  // spread the review questions through the quest
+  const out = fresh.slice();
+  review.forEach((r, i) => out.splice(Math.min(out.length, 1 + i * 3), 0, r));
+  return out.slice(0, QUEST_LEN);
+}
+
+const questDoneToday = p => (p.questLog || []).includes(today());
+function questStreak(p) {
+  const log = new Set(p.questLog || []);
+  let n = 0, d = new Date();
+  if (!log.has(today())) d.setDate(d.getDate() - 1);   // today isn't over yet
+  while (log.has(d.toLocaleDateString('en-CA'))) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+const questsThisWeek = p => (p.questLog || []).filter(d => dayDiff(d, today()) < 7).length;
+
+function questCardHtml(p) {
+  const done = questDoneToday(p), streak = questStreak(p);
+  return `<button class="card quest-card ${done ? 'done' : ''}" id="quest">
+    <span class="quest-icon" aria-hidden="true">${done ? '✅' : '⭐'}</span>
+    <span class="quest-text"><b>${done ? "Today's Quest is done!" : "Today's Quest"}</b>
+      <span class="muted">${done ? 'Come back tomorrow for a new one. Tap to practice more.' : `${QUEST_LEN} questions from every subject · +${QUEST_BONUS} bonus`}</span></span>
+    ${streak ? `<span class="chip quest-streak" title="quests in a row">⭐ ${streak} day${streak === 1 ? '' : 's'}</span>` : ''}
+    ${done ? '' : '<span class="quest-go" aria-hidden="true">Go →</span>'}
+  </button>`;
+}
+
+function startQuest() {
+  const p = me(), slots = buildQuest(p);
+  if (!slots.length) { toast('No quest questions for this grade yet.'); return; }
+  game = { missionId: 'quest', quest: true, slots, used: new Set(), subject: slots[0].subject, n: 0, firstTry: 0, recent: [], retry: [],
+    q: null, input: '', tries: 0, locked: false, queue: null, qi: 0, len: slots.length };
+  nextQuestion();
+}
+
+function finishQuest() {
+  const p = me(), th = theme(p), t = today();
+  const first = !questDoneToday(p), right = game.firstTry, len = game.len, perfect = right === len;
+  const earned = right + (perfect ? 5 : 0) + (first ? QUEST_BONUS : 0);
+  p.points += earned;
+  if (first) p.questLog = [...(p.questLog || []), t].slice(-120);
+  touchStreak(p);
+  const found = p.found[p.theme] || 0;
+  let prize = null;
+  if (first && found < th.collectibles.length) { prize = th.collectibles[found]; p.found[p.theme] = found + 1; }
+  save();
+  sfx.win(); confetti('⭐');
+  game = null;
+  const streak = questStreak(p);
+  // typing needs a real keyboard, so it's an extra, not part of the quest
+  const lessons = TYPING_LESSONS.filter(l => !l.game);
+  const typeNext = lessons.slice().sort((a, b) => typingProgress(p, a.id) - typingProgress(p, b.id))[0];
+  const keyboard = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  render(`
+    <div class="result stack card">
+      <h1>${first ? '⭐ Quest complete!' : 'Extra practice done!'}</h1>
+      ${prize ? `<div class="prize">${prize[0]}</div>
+        <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>` : ''}
+      ${first && streak > 1 ? `<p class="quest-streak-big">⭐ ${streak} quests in a row!</p>` : ''}
+      <p class="score">You got <b>${right} of ${len}</b> right on the first try
+        ${perfect ? '<br>🎯 <b>Perfect!</b> +5 bonus' : ''}${first ? `<br>⭐ Quest bonus +${QUEST_BONUS}` : ''}<br>+${earned} ${th.point} ${th.pointIcon}</p>
+      ${first ? '<p class="muted" style="margin:0">A new quest is ready tomorrow.</p>' : ''}
+      <div class="row-actions">
+        ${keyboard && typeNext && SUBJECTS.typing ? `<button class="btn" id="typeBonus">⌨️ Typing warm-up: ${esc(typeNext.name)}</button>` : ''}
+        <button class="btn ${keyboard ? 'ghost' : ''}" id="home">Home</button>
+      </div>
+    </div>
+  `);
+  const tb = document.getElementById('typeBonus'); if (tb) tb.onclick = () => startTyping(typeNext.id);
   document.getElementById('home').onclick = showHome;
 }
 
@@ -1927,7 +2081,7 @@ function showParents() {
       }).join(''))).join('');
       return `<div class="card stack">
         <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${gradeName(p.grade)} grade${Object.keys(p.levels || {}).length ? ' (' + Object.entries(p.levels).map(([s, g]) => `${SUBJECTS[s] ? SUBJECTS[s].name : s} ${gradeName(g)}`).join(', ') + ')' : ''} · ${THEMES[p.theme].name}</span></h2>
-        <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'}</p>
+        <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'} · ⭐ Daily quests: ${questsThisWeek(p)} of the last 7 days</p>
         <div style="overflow-x:auto"><table><tr><th>Skill</th><th>Missions</th><th>First-try accuracy</th><th>Mastered</th></tr>${rows}</table></div>
         <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
         <div><b>Trickiest typing keys</b><div class="facts" style="margin-top:8px">${
@@ -2022,6 +2176,7 @@ function mergePlayer(a, b) {
   m.typeMiss = maxMap(a.typeMiss, b.typeMiss);
   m.passages = maxMap(a.passages, b.passages);
   m.typeHigh = Math.max(a.typeHigh || 0, b.typeHigh || 0);
+  m.questLog = [...new Set([...(a.questLog || []), ...(b.questLog || [])])].sort().slice(-120);
   const la = a.lastDay || '', lb = b.lastDay || '';
   if (la !== lb) { const w = la > lb ? a : b; m.lastDay = w.lastDay; m.streak = w.streak; }
   else m.streak = Math.max(a.streak || 0, b.streak || 0);
