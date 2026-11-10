@@ -1,13 +1,14 @@
 # Quest Academy
 
-A learning game for 2nd and 3rd graders covering math, reading, writing, science and social studies. Play it at **https://youngin9210.github.io/quest-academy/**
+A learning game for 2nd and 3rd graders covering math, reading, writing, science, social studies and typing. Play it at **https://youngin9210.github.io/quest-academy/**
 
 ## What's in it
 - **4 worlds to pick from:** Space Explorers, Ocean Adventure, Pet Rescue, Magic Bakery. Each player picks her own world and can switch any time.
 - **One player, every subject:** points, the daily streak and collectibles grow from every subject.
 - **Math:** add & subtract facts up to 20, place value, 2-digit add & subtract, times & divide facts, word problems, and a multiple choice mission. Wrong choices are common mistakes (forgot to carry, mixed up < and >) and explain that mistake.
 - **Reading:** word sounds, word power (prefixes, suffixes, synonyms), story passages and nonfiction passages with comprehension questions.
-- **Writing:** spelling (hear a real person say the word, slow it down, or hear it in a sentence, then type it), fix-it sentences, sentence building, grammar, and a journal with daily prompts.
+- **Writing:** spelling (hear a real person say the word, slow it down, then type it), fix-it sentences, sentence building, grammar, and a journal with daily prompts.
+- **Typing:** home row, top row, bottom row and sentence lessons with a color-coded finger guide, plus a themed falling-words game with combos, levels and a high score. Best with a real keyboard.
 - **Science:** matter, plants, animals, weather, forces & magnets, Earth. Each mission starts with short fact cards.
 - **Social Studies:** maps, community, money, government, symbols & holidays, then & now.
 - **Read-aloud:** a 🔊 button reads stories, passages, questions and fact cards out loud.

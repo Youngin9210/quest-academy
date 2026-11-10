@@ -541,10 +541,11 @@ GENERATORS.choice = p => {
    ========================================================= */
 const SUBJECTS = window.SUBJECTS || {};
 SUBJECTS.math = { name: 'Math', icon: '🔢', builtIn: true };
-const SUBJECT_ORDER = ['math', 'reading', 'writing', 'science', 'social'].filter(id => SUBJECTS[id]);
+SUBJECTS.typing = { name: 'Typing', icon: '⌨️', builtIn: true };
+const SUBJECT_ORDER = ['math', 'reading', 'writing', 'science', 'social', 'typing'].filter(id => SUBJECTS[id]);
 const BANK = {};   // mission id -> { subject, mission }
 const QINDEX = {}; // question id -> { mid, q }
-SUBJECT_ORDER.forEach(sid => (SUBJECTS[sid].missions || []).forEach(m => {
+SUBJECT_ORDER.filter(sid => !SUBJECTS[sid].builtIn).forEach(sid => (SUBJECTS[sid].missions || []).forEach(m => {
   BANK[m.id] = { subject: sid, mission: m };
   (m.questions || []).forEach(q => { QINDEX[q.id] = { mid: m.id, q }; });
   (m.passages || []).forEach(ps => ps.questions.forEach(q => { QINDEX[q.id] = { mid: m.id, q }; }));
@@ -598,11 +599,10 @@ function bankQuestion(item, p) {
       // a real person's recording of the word, if we have one (see audio/CREDITS.md)
       wordClip: window.SPELL_AUDIO && SPELL_AUDIO[q.word] ? `audio/spell/${q.word}.m4a` : null,
       sentence,
-      prompt: `${pic}<p class="muted" style="margin:0 0 10px">Listen, then spell the word.</p>
+      prompt: `${pic}<p class="muted" style="margin:0 0 10px">Listen, then spell the word. The sentence shows how it's used.</p>
         <div class="row-actions">
           <button class="btn" type="button" data-hear="word">🔊 Hear the word</button>
           <button class="btn ghost" type="button" data-hear="slow">🐢 Say it slowly</button>
-          <button class="btn ghost" type="button" data-hear="sentence">💬 Use it in a sentence</button>
         </div>
         <p class="story-text" style="margin:16px 0">${blanked}</p>
         <input class="text spell-input" id="spell" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" aria-label="Type the word">`,
@@ -650,6 +650,7 @@ function record(p, key, correct) {
 
 function mastery(p, missionId) {
   if (BANK[missionId]) return bankProgress(p, missionId);
+  if (TYPE_BY_ID[missionId]) return typingProgress(p, missionId);
   if (POOLS[missionId]) {
     const pool = POOLS[missionId];
     return pool.filter(k => p.stats[k] && p.stats[k].box >= 3).length / pool.length;
@@ -773,6 +774,8 @@ function showHome() {
   const subj = SUBJECTS[p.subject] ? p.subject : 'math';
   const missions = subj === 'math'
     ? MISSIONS.map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: m.grade }))
+    : subj === 'typing'
+    ? TYPING_LESSONS.map(m => ({ id: m.id, icon: m.icon, name: m.game ? (BLASTER[p.theme] || BLASTER.space).name : m.name, desc: m.desc, grade: 2 }))
     : SUBJECTS[subj].missions.map(m => ({ id: m.id, icon: m.icon, name: esc(m.name), desc: esc(m.desc), grade: 2 }));
   // suggest the least-practiced mission for this grade
   const suggested = missions.filter(m => m.grade <= p.grade).sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
@@ -884,6 +887,7 @@ function showCollection() {
 let game = null;
 
 function startMission(missionId) {
+  if (TYPE_BY_ID[missionId]) return startTyping(missionId);
   const b = BANK[missionId];
   if (b && b.mission.learn) return showLearn(missionId);
   beginMission(missionId);
@@ -983,10 +987,10 @@ function drawPlay() {
     const clip = q.wordClip, word = q.spell;
     const sayWord = (rate, then) => clip ? playClips([clip], rate, then) : speak(word, rate === 1 ? .8 : .5, then);
     const hear = what => {
-      if (what === 'all') return sayWord(1, () => setTimeout(() => speak(q.sentence, .85, () => setTimeout(() => sayWord(1), 400)), 400));
-      if (what === 'word') return sayWord(1);
+      // only the real recording is played; the sentence is shown on screen, not read aloud
+      if (what === 'all') return sayWord(1, () => setTimeout(() => sayWord(1), 700));
       if (what === 'slow') return sayWord(.7);
-      return speak(q.sentence, .85);
+      return sayWord(1);
     };
     $app.querySelectorAll('[data-hear]').forEach(b => { b.onclick = () => hear(b.dataset.hear); });
     setTimeout(() => hear('all'), 350);
@@ -1185,6 +1189,283 @@ function finishMission() {
   document.getElementById('home').onclick = showHome;
 }
 
+/* =========================================================
+   Typing: lessons with a finger-guide keyboard + a word game
+   ========================================================= */
+const KB_ROWS = ['qwertyuiop', 'asdfghjkl;', 'zxcvbnm,./'];
+const FINGER = {};
+[['qaz', 'lp'], ['wsx', 'lr'], ['edc', 'lm'], ['rfvtgb', 'li'], ['yhnujm', 'ri'], ['ik,', 'rm'], ['ol.', 'rr'], ['p;/', 'rp']]
+  .forEach(([keys, f]) => [...keys].forEach(k => { FINGER[k] = f; }));
+const FINGER_NAME = { lp: 'left pinky', lr: 'left ring finger', lm: 'left middle finger', li: 'left pointer finger',
+  ri: 'right pointer finger', rm: 'right middle finger', rr: 'right ring finger', rp: 'right pinky', th: 'thumb' };
+
+const TYPE_WORDS = ('a as ad add all ask dad sad lad fad fall hall glad flash gas has had half dash shall salad flask lash ' +
+  'the and you that was for are with his they one have this from had not but what all were when your can said there use ' +
+  'each which she how their will other about out many then them these some her would make like him into time has look two ' +
+  'more write see number way could people than first water been call who its now find long down day did get come made may ' +
+  'part over new sound take only little work know place year live back give most very after thing our just name good ' +
+  'sentence man think say great where help through much before line right too mean old any same tell boy follow came want ' +
+  'show also around form three small set put end does another well large must big even such because turn here why ask ' +
+  'went men read need land different home us move try kind hand picture again change off play spell air away animal house ' +
+  'point page letter mother answer found study still learn should world high every near add food between own below country ' +
+  'plant last school father keep tree never start city earth eye light thought head under story saw left few while along ' +
+  'might close something seem next hard open example begin life always those both paper together got group often run ' +
+  'cat dog sun fun run red top hop pig fish frog duck cake rain jump kite star moon rock ship boat bike game toy snow').split(' ');
+const TYPE_SENTENCES = [
+  'I like to play outside.', 'The cat sat on a red mat.', 'Can you see the moon?', 'We read a book at school.',
+  'My dog likes to run fast.', 'Look at that big rainbow!', 'Do you want to play a game?', 'The frog jumped into the pond.',
+  'She has a blue kite.', 'We made a cake for Dad.', 'It is fun to ride a bike.', 'Where did the ball go?',
+  '{name} and {buddy} zoom past the stars.', '{buddy} says hello to {name}!', 'Fish swim in the deep sea.',
+  'The sun is very hot.', 'I can type with all my fingers.', 'Snow fell on the big hill.', 'What is your favorite game?',
+  'We planted seeds, beans, and corn.', 'The bus stops at the corner.', 'Wow, that was a great jump!',
+];
+
+const TYPING_LESSONS = [
+  { id: 'type-home', icon: '🏠', name: 'Home Row', desc: 'A S D F G H J K L', keys: 'asdfghjkl', drills: ['ff jj ff jj', 'dd kk dd kk', 'ss ll ss ll', 'fj dk sl a;', 'gg hh fg jh'] },
+  { id: 'type-top', icon: '⬆️', name: 'Top Row', desc: 'Q W E R T Y U I O P', keys: 'asdfghjklqwertyuiop', drills: ['ff rr ff rr', 'jj uu jj uu', 'dd ee kk ii', 'ft jy dr ku'] },
+  { id: 'type-bottom', icon: '⬇️', name: 'Bottom Row', desc: 'Z X C V B N M', keys: 'abcdefghijklmnopqrstuvwxyz', drills: ['ff vv jj mm', 'dd cc kk nn', 'fb jn sx dc'] },
+  { id: 'type-sentences', icon: '✍️', name: 'Sentences', desc: 'Capitals with Shift, . ? !', sentences: true },
+  { id: 'type-game', icon: '🎮', name: 'Word Blaster', desc: 'Zap the words before they land!', game: true },
+];
+const TYPE_BY_ID = Object.fromEntries(TYPING_LESSONS.map(l => [l.id, l]));
+const typeTarget = p => p.grade >= 3 ? 12 : 8; // words per minute goal
+const BLASTER = {
+  space: { thing: '☄️', name: 'Asteroid Blaster', boom: '💥' }, ocean: { thing: '🫧', name: 'Bubble Pop', boom: '✨' },
+  pets: { thing: '🦴', name: 'Treat Catch', boom: '💖' }, bakery: { thing: '🧁', name: 'Sprinkle Storm', boom: '🍬' },
+};
+
+function typingProgress(p, id) {
+  const runs = ((p.typing || {})[id] || []).slice(-3);
+  if (!runs.length) return 0;
+  if (id === 'type-game') return Math.min(1, Math.max(...runs.map(r => r.score)) / 1500);
+  return runs.reduce((a, r) => a + (r.acc / 100) * Math.min(1, r.wpm / typeTarget(p)), 0) / 3;
+}
+
+function makeLines(lesson, p) {
+  if (lesson.sentences) return shuffle(TYPE_SENTENCES.slice()).slice(0, 5).map(s => plainFill(s, p));
+  const ok = w => [...w].every(c => lesson.keys.includes(c));
+  const words = TYPE_WORDS.filter(ok).filter(w => w.length <= (p.grade >= 3 ? 7 : 5));
+  const lines = shuffle(lesson.drills.slice()).slice(0, 2);
+  while (lines.length < 6) lines.push(Array.from({ length: 5 }, () => pick(words)).join(' '));
+  return lines;
+}
+
+function keyboardHtml(next) {
+  const nk = (next || '').toLowerCase();
+  return `<div class="kb" aria-hidden="true">${KB_ROWS.map((row, r) => `<div class="kb-row r${r}">${[...row].map(k =>
+    `<span class="key f-${FINGER[k]} ${k === nk ? 'next' : ''} ${(k === 'f' || k === 'j') ? 'bump' : ''}">${k === ';' ? ';' : k.toUpperCase()}</span>`).join('')}</div>`).join('')}
+    <div class="kb-row"><span class="key shift f-lp ${next && next !== next.toLowerCase() && /[a-z]/i.test(next) ? 'next' : ''}">Shift</span><span class="key space f-th ${next === ' ' ? 'next' : ''}">space</span><span class="key shift f-rp ${next && next !== next.toLowerCase() && /[a-z]/i.test(next) ? 'next' : ''}">Shift</span></div></div>`;
+}
+
+const typeHelpText = ch => {
+  if (ch === ' ') return 'Tap the <b>space bar</b> with your <b>thumb</b>';
+  const f = FINGER[ch.toLowerCase()];
+  if (!f) return `Type <b>${esc(ch)}</b>`;
+  const shift = ch !== ch.toLowerCase() ? `Hold <b>Shift</b> with your other pinky, then ` : '';
+  return `${shift || 'Use '}${shift ? 'use' : ''} your <b class="fc-${f}">${FINGER_NAME[f]}</b>`.replace('Use  your', 'Use your');
+};
+
+// one hidden text box catches typing from real keyboards and the iPad keyboard
+function typingInput(onChar) {
+  const ta = document.getElementById('typein');
+  const focus = () => { try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } };
+  ta.addEventListener('input', () => { const v = ta.value; ta.value = ''; for (const ch of v.replace(/\n/g, ' ')) onChar(ch); });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  $app.addEventListener('pointerdown', e => { if (!e.target.closest('button')) setTimeout(focus, 0); });
+  focus();
+  return focus;
+}
+const noKeyboardNote = () => matchMedia('(pointer: coarse)').matches
+  ? `<p class="muted center" style="margin:6px 0 0">⌨️ Typing works best with a real keyboard. On a tablet, tap the words to open the keyboard.</p>` : '';
+
+function startTyping(id) {
+  const lesson = TYPE_BY_ID[id];
+  if (lesson.game) return startBlaster();
+  const p = me(), th = theme(p);
+  const t = { lines: makeLines(lesson, p), li: 0, ci: 0, errors: 0, correct: 0, start: 0, missed: {} };
+  const draw = () => {
+    const line = t.lines[t.li], ch = line[t.ci];
+    const elapsed = t.start ? (Date.now() - t.start) / 60000 : 0;
+    const wpm = elapsed > 0.05 ? Math.round(t.correct / 5 / elapsed) : 0;
+    const acc = t.correct + t.errors ? Math.round(t.correct / (t.correct + t.errors) * 100) : 100;
+    $app.querySelector('#typeline').innerHTML = [...line].map((c, i) =>
+      `<span class="tc ${i < t.ci ? 'done' : i === t.ci ? 'cur' : ''} ${c === ' ' ? 'sp' : ''}">${c === ' ' ? '&nbsp;' : esc(c)}</span>`).join('');
+    $app.querySelector('#typehelp').innerHTML = typeHelpText(ch);
+    $app.querySelector('#kbwrap').innerHTML = keyboardHtml(ch);
+    $app.querySelector('#tstats').innerHTML = `<span class="chip">⚡ ${wpm} WPM</span><span class="chip">🎯 ${acc}%</span><span class="chip">${t.li + 1} / ${t.lines.length}</span>`;
+    document.getElementById('bar').style.width = (t.li / t.lines.length * 100) + '%';
+  };
+  render(`
+    <div class="play">
+      <div class="topbar" style="margin:0">
+        <button class="btn ghost small" id="quit">✕</button>
+        <span class="chip">${lesson.icon} ${lesson.name}</span>
+        <span class="chips" id="tstats"></span>
+      </div>
+      <div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar"></i></span></div>
+      <div class="card typeline" id="typeline"></div>
+      <p class="center typehelp" id="typehelp"></p>
+      <div id="kbwrap"></div>
+      ${noKeyboardNote()}
+      <textarea id="typein" class="typein" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here"></textarea>
+    </div>`);
+  document.getElementById('quit').onclick = showHome;
+  typingInput(c => {
+    const line = t.lines[t.li], want = line[t.ci];
+    if (!t.start) t.start = Date.now();
+    if (c === want) {
+      t.correct++; t.ci++;
+      if (t.ci >= line.length) {
+        t.li++; t.ci = 0; sfx.good();
+        if (t.li >= t.lines.length) return finishTyping(lesson, t);
+      }
+    } else {
+      t.errors++; t.missed[want] = (t.missed[want] || 0) + 1;
+      const cur = $app.querySelector('.tc.cur'); if (cur) { cur.classList.remove('miss'); void cur.offsetWidth; cur.classList.add('miss'); }
+      beep([[220, .08]]);
+      return;
+    }
+    draw();
+  });
+  draw();
+}
+
+function finishTyping(lesson, t) {
+  const p = me(), th = theme(p);
+  const mins = Math.max((Date.now() - t.start) / 60000, .05);
+  const wpm = Math.round(t.correct / 5 / mins), acc = Math.round(t.correct / (t.correct + t.errors) * 100);
+  p.typing = p.typing || {}; (p.typing[lesson.id] = p.typing[lesson.id] || []).push({ wpm, acc, date: today() });
+  p.typing[lesson.id] = p.typing[lesson.id].slice(-30);
+  p.typeMiss = p.typeMiss || {};
+  Object.entries(t.missed).forEach(([k, n]) => { p.typeMiss[k] = (p.typeMiss[k] || 0) + n; });
+  const goal = typeTarget(p), stars = (acc >= 90 ? 1 : 0) + (acc >= 97 ? 1 : 0) + (wpm >= goal ? 1 : 0);
+  const earned = 3 + stars * 3;
+  awardFinish(p, th, earned, `
+    <div class="type-results">
+      <div><b>${wpm}</b><span>words per minute</span></div>
+      <div><b>${acc}%</b><span>accuracy</span></div>
+      <div><b>${'⭐'.repeat(stars) || '💪'}</b><span>${stars === 3 ? 'Amazing!' : stars ? 'Great job!' : 'Keep practicing!'}</span></div>
+    </div>
+    <p class="muted">Goal: ${goal} words per minute with 97% accuracy. Accuracy first, speed comes next!</p>`,
+    () => startTyping(lesson.id));
+}
+
+// shared end-of-mission reward screen
+function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = th.finish) {
+  p.points += earned;
+  touchStreak(p);
+  const found = p.found[p.theme] || 0;
+  let prize = null;
+  if (allowPrize && found < th.collectibles.length) { prize = th.collectibles[found]; p.found[p.theme] = found + 1; }
+  save(); sfx.win(); confetti(th.pointIcon);
+  render(`
+    <div class="result stack card" style="margin-top:20px">
+      <h1>${title}</h1>
+      ${prize ? `<div class="prize">${prize[0]}</div><h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>!</p>` : ''}
+      ${bodyHtml}
+      <p style="font-size:1.3rem">+${earned} ${th.point} ${th.pointIcon}</p>
+      <div class="row-actions"><button class="btn" id="again">Play again</button><button class="btn ghost" id="home">Home</button></div>
+    </div>`);
+  document.getElementById('again').onclick = again;
+  document.getElementById('home').onclick = showHome;
+}
+
+/* ----- Word Blaster game ----- */
+function startBlaster() {
+  const p = me(), th = theme(p), look = BLASTER[p.theme] || BLASTER.space;
+  const maxLen = p.grade >= 3 ? 7 : 5;
+  const pool = TYPE_WORDS.filter(w => w.length >= 2 && w.length <= maxLen);
+  const g = { words: [], target: null, score: 0, combo: 0, lives: 3, zapped: 0, level: 1, t0: performance.now(), last: performance.now(), spawnAt: 0, alive: true };
+  render(`
+    <div class="play">
+      <div class="topbar" style="margin:0">
+        <button class="btn ghost small" id="quit">✕</button>
+        <span class="chip">${look.thing} ${look.name}</span>
+        <span class="chips"><span class="chip" id="gscore">0</span><span class="chip" id="glives">❤️❤️❤️</span></span>
+      </div>
+      <div class="card blaster" id="field"><div class="combo" id="combo"></div><div class="level-up" id="lvl"></div></div>
+      <p class="center typehelp" id="typehelp">Type a word to zap it!</p>
+      ${noKeyboardNote()}
+      <textarea id="typein" class="typein" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here"></textarea>
+    </div>`);
+  const field = document.getElementById('field');
+  document.getElementById('quit').onclick = () => { g.alive = false; showHome(); };
+  const wordHtml = w => `<span class="wthing">${look.thing}</span><span class="wtext"><span class="typed">${esc(w.text.slice(0, w.typed))}</span>${esc(w.text.slice(w.typed))}</span>`;
+  const hud = () => {
+    document.getElementById('gscore').textContent = `⭐ ${g.score}`;
+    document.getElementById('glives').textContent = '❤️'.repeat(g.lives) + '🖤'.repeat(3 - g.lives);
+    document.getElementById('combo').textContent = g.combo > 1 ? `Combo ×${g.combo}` : '';
+  };
+  const spawn = () => {
+    const used = new Set(g.words.map(w => w.text[0]));
+    let text = pick(pool), tries = 0;
+    while (used.has(text[0]) && tries++ < 20) text = pick(pool);   // different first letters = easy targeting
+    const el = document.createElement('div'); el.className = 'fword';
+    const w = { text, typed: 0, y: -40, el, x: rand(5, 70) };
+    el.style.left = w.x + '%'; el.innerHTML = wordHtml(w); field.appendChild(el); g.words.push(w);
+  };
+  const zap = w => {
+    g.combo++; g.zapped++;
+    g.score += w.text.length * 10 * Math.min(5, 1 + Math.floor(g.combo / 3));
+    w.el.innerHTML = `<span class="boom">${look.boom}</span>`; w.el.classList.add('zapped');
+    setTimeout(() => w.el.remove(), 350);
+    g.words = g.words.filter(x => x !== w); g.target = null;
+    beep([[880, .06], [1320, .08]]);
+    if (g.zapped % 10 === 0) {
+      g.level++; const l = document.getElementById('lvl'); l.textContent = `Level ${g.level}!`;
+      l.classList.remove('show'); void l.offsetWidth; l.classList.add('show');
+    }
+    hud();
+  };
+  typingInput(c => {
+    if (!g.alive) return;
+    c = c.toLowerCase();
+    if (!g.target) g.target = g.words.filter(w => w.text[0] === c).sort((a, b) => b.y - a.y)[0] || null;
+    if (g.target && g.target.text[g.target.typed] === c) {
+      g.target.typed++; g.target.el.classList.add('locked'); g.target.el.innerHTML = wordHtml(g.target);
+      if (g.target.typed === g.target.text.length) zap(g.target);
+    } else {
+      g.combo = 0; hud();
+      field.classList.remove('shake'); void field.offsetWidth; field.classList.add('shake');
+    }
+  });
+  const tick = now => {
+    if (!g.alive || !document.body.contains(field)) return;
+    const dt = Math.min(.05, (now - g.last) / 1000); g.last = now;
+    const speed = 22 + g.level * 7 + (p.grade >= 3 ? 6 : 0);           // pixels per second
+    const every = Math.max(900, 2600 - g.level * 220);                  // ms between words
+    if (now > g.spawnAt) { spawn(); g.spawnAt = now + every; }
+    const floor = field.clientHeight - 50;
+    for (const w of g.words.slice()) {
+      w.y += speed * dt; w.el.style.transform = `translateY(${w.y}px)`;
+      if (w.y > floor) {
+        g.words = g.words.filter(x => x !== w); if (g.target === w) g.target = null;
+        w.el.remove(); g.lives--; g.combo = 0; sfx.bad(); hud();
+        if (g.lives <= 0) { g.alive = false; return endBlaster(g, look); }
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  hud(); requestAnimationFrame(tick);
+}
+
+function endBlaster(g, look) {
+  const p = me(), th = theme(p);
+  p.typing = p.typing || {};
+  (p.typing['type-game'] = p.typing['type-game'] || []).push({ score: g.score, zapped: g.zapped, date: today() });
+  p.typing['type-game'] = p.typing['type-game'].slice(-30);
+  const best = p.typeHigh || 0, newBest = g.score > best;
+  if (newBest) p.typeHigh = g.score;
+  const earned = Math.min(25, 2 + Math.floor(g.score / 100));
+  awardFinish(p, th, earned, `
+    <div class="type-results">
+      <div><b>${g.score}</b><span>score</span></div>
+      <div><b>${g.zapped}</b><span>words zapped</span></div>
+      <div><b>${newBest ? '🏆' : (p.typeHigh || 0)}</b><span>${newBest ? 'New high score!' : 'high score'}</span></div>
+    </div>
+    ${g.zapped < 10 ? '<p class="muted">Zap 10 words in one game to find a new friend!</p>' : ''}`, startBlaster, g.zapped >= 10, 'Game over!');
+}
+
 /* ----- Grown-ups ----- */
 function showParentGate() {
   render(`
@@ -1206,7 +1487,7 @@ function showParentGate() {
 
 function trickyFacts(p) {
   return Object.entries(p.stats)
-    .filter(([k, s]) => s.w > 0 && s.box < 3)
+    .filter(([k, s]) => s.w > 0 && s.box < 3 && (!k.startsWith('q:') || QINDEX[k.slice(2)]))
     .sort((a, b) => (b[1].w - b[1].r * .5) - (a[1].w - a[1].r * .5))
     .slice(0, 12)
     .map(([k, s]) => `<span class="fact" title="right ${s.r}, missed ${s.w}">${esc(labelKey(k))}</span>`).join('') || '<span class="muted">Nothing tricky yet. Nice!</span>';
@@ -1241,17 +1522,25 @@ function showParents() {
     <div class="stack">
     ${state.profiles.map(p => {
       const rows = SUBJECT_ORDER.map(sid => `<tr class="subject-row"><th colspan="4">${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</th></tr>` +
+        (sid === 'typing' ? TYPING_LESSONS.map(l => {
+          const runs = (p.typing || {})[l.id] || [];
+          if (l.game) return `<tr><td>${esc((BLASTER[p.theme] || BLASTER.space).name)}</td><td>${runs.length}</td><td>High score: ${p.typeHigh || 0}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
+          const last = runs.slice(-3), avg = k => last.length ? Math.round(last.reduce((a, r) => a + r[k], 0) / last.length) : 0;
+          return `<tr><td>${esc(l.name)}</td><td>${runs.length}</td><td>${runs.length ? `${avg('wpm')} WPM · ${avg('acc')}% accurate` : '—'}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
+        }).join('') :
         (sid === 'math' ? MISSIONS : SUBJECTS[sid].missions).map(m => {
         const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
         const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
         const mm = p.missions[m.id] || { plays: 0 };
         return `<tr><td>${esc(sid === 'math' ? m.desc : m.name)}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
-      }).join('')).join('');
+      }).join(''))).join('');
       return `<div class="card stack">
         <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${p.grade === 2 ? '2nd' : '3rd'} grade · ${THEMES[p.theme].name}</span></h2>
         <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'}</p>
         <div style="overflow-x:auto"><table><tr><th>Skill</th><th>Missions</th><th>First-try accuracy</th><th>Mastered</th></tr>${rows}</table></div>
         <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
+        <div><b>Trickiest typing keys</b><div class="facts" style="margin-top:8px">${
+          Object.entries(p.typeMiss || {}).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, n]) => `<span class="fact">${k === ' ' ? 'space' : esc(k)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
         <div><b>Common mistakes</b> <span class="muted">(from the multiple choice mission)</span><div class="facts" style="margin-top:8px">${
           Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
         <div><b>Journal</b> <span class="muted">(${(p.journal || []).length} entries)</span>${(p.journal || []).slice(0, 5).map(e =>
