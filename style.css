@@ -360,3 +360,21 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .level-grid label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
 .level-grid select { font-family: inherit; font-size: 1rem; padding: 8px; border-radius: 10px; border: 2px solid var(--card-border); background: var(--card); color: var(--ink); }
 .question .frac { font-size: 1.5em; }
+
+/* ---------- Grown-ups lock ---------- */
+.gate { text-align: center; padding: 28px 24px; }
+.gate > * + * { margin-top: 14px; }
+.gate .gate-icon { font-size: 2.8rem; line-height: 1; }
+.gate h2 { margin-top: 8px; }
+.gate > p, .gate .muted { line-height: 1.45; }
+.gate form.stack > * + * { margin-top: 10px; }
+.gate .text { max-width: none; width: 100%; text-align: center; }
+.gate .text.pin { letter-spacing: .3em; font-size: 1.5rem; }
+.gate .text.pin::placeholder { letter-spacing: normal; font-size: 1.1rem; }
+.gate .btn { width: 100%; }
+.gate .row-actions { justify-content: center; }
+.gate .lbl { margin: 0; text-align: center; }
+.gate .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-weight: 600; }
+.gate .divider::before, .gate .divider::after { content: ''; flex: 1; height: 2px; background: var(--card-border); border-radius: 2px; }
+.gate details { text-align: left; }
+.gate details .btn { width: auto; }

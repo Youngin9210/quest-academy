@@ -1716,12 +1716,12 @@ function showParentGate(then = showParents, back = showProfiles) {
   const wire = () => { document.getElementById('back').onclick = back; };
 
   if (signedIn) {
-    card(`<h2>🔒 Grown-ups only</h2>
+    card(`<div class="gate-icon">🔒</div><h2>Grown-ups only</h2>
       <p class="muted" style="margin:0">Enter the password for <b>${esc(state.sync.family)}</b>.</p>
       <form id="gf" class="stack" autocomplete="on">
         <input type="text" name="username" autocomplete="username" value="${esc(state.sync.family)}" hidden>
         <input class="text" id="gpw" type="password" autocomplete="current-password" placeholder="Family password">
-        <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Unlock</button></div>
+        <div class="row-actions"><button class="btn" type="submit">Unlock</button></div>
       </form>`);
     wire();
     document.getElementById('gpw').focus();
@@ -1734,10 +1734,10 @@ function showParentGate(then = showParents, back = showProfiles) {
   }
 
   if (pin) {
-    card(`<h2>🔒 Grown-ups only</h2>
+    card(`<div class="gate-icon">🔒</div><h2>Grown-ups only</h2>
       <p class="muted" style="margin:0">Enter this device's grown-up PIN.</p>
       <form id="gf" class="stack"><input class="text pin" id="gpin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN">
-      <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Unlock</button></div></form>
+      <div class="row-actions"><button class="btn" type="submit">Unlock</button></div></form>
       <details class="acct-more"><summary>Forgot the PIN?</summary>
         ${SYNC_URL ? '<p class="muted">If you have a family account, sign in on this device instead: the family password unlocks this page.</p><button class="btn small" id="toSignIn">Sign in to my family</button>' : ''}
         <p class="muted">Or reset it. This removes all players and progress on this device.</p>
@@ -1760,14 +1760,14 @@ function showParentGate(then = showParents, back = showProfiles) {
   }
 
   // first time on this device: a grown-up picks how to lock it
-  card(`<h2>🔒 Set up grown-up access</h2>
+  card(`<div class="gate-icon">🔒</div><h2>Set up grown-up access</h2>
     <p class="muted" style="margin:0">The grown-ups page shows progress and settings, so it needs a lock kids can't guess.</p>
     ${SYNC_URL ? `<button class="btn" id="toSignIn">Sign in to my family account</button>
-      <p class="muted center" style="margin:0">or</p>` : ''}
-    <form id="gf" class="stack"><label class="lbl" style="margin:0">Make a PIN for this device</label>
+      <div class="divider">or</div>` : ''}
+    <form id="gf" class="stack"><label class="lbl">Make a PIN for this device</label>
       <input class="text pin" id="p1" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="4 to 8 digits">
       <input class="text pin" id="p2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Type it again">
-      <div class="row-actions" style="justify-content:flex-start"><button class="btn ghost" type="submit">Save PIN</button></div></form>`);
+      <div class="row-actions"><button class="btn ghost" type="submit">Save PIN</button></div></form>`);
   wire();
   const ts = document.getElementById('toSignIn'); if (ts) ts.onclick = () => showGateSignIn(then, back);
   document.getElementById('gf').onsubmit = async e => {
@@ -1782,11 +1782,11 @@ function showParentGate(then = showParents, back = showProfiles) {
 
 function showGateSignIn(then, back) {
   render(`<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
-    <div class="card stack" style="max-width:480px;margin:0 auto"><h2>☁️ Sign in to your family</h2>
+    <div class="card stack gate" style="max-width:480px;margin:0 auto"><div class="gate-icon">☁️</div><h2>Sign in to your family</h2>
     <form id="sf" class="stack" autocomplete="on">
       <input class="text" id="sfName" autocomplete="username" placeholder="Family name" autocapitalize="words">
       <input class="text" id="sfPw" type="password" autocomplete="current-password" placeholder="Password">
-      <div class="row-actions" style="justify-content:flex-start"><button class="btn" type="submit">Sign in</button></div></form>
+      <div class="row-actions"><button class="btn" type="submit">Sign in</button></div></form>
     <p class="muted" style="margin:0">New family? You'll need an invite link from the person who shared Quest Academy.</p></div>`);
   document.getElementById('back').onclick = () => showParentGate(then, back);
   document.getElementById('sf').onsubmit = async e => {
