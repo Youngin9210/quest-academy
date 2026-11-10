@@ -2126,6 +2126,10 @@ function missionOf(k) {
    Each device keeps working offline; changes are merged per player.
    ========================================================= */
 const SYNC_URL = /github\.io$/.test(location.hostname) ? null : 'api/sync.php';
+// save the app on the device so it opens without signal (see sw.js)
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
 state.sync = state.sync || { token: '', family: '', admin: false, last: 0, tombs: [], ok: 0 };
 state.sync.tombs = state.sync.tombs || [];
 state.device = state.device || ('d' + Math.random().toString(36).slice(2, 10));

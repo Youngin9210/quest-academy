@@ -21,6 +21,8 @@ A learning game for 2nd through 5th graders covering math, reading, writing, sci
 ## Playing on an iPad
 Open the site in Safari, tap **Share**, then **Add to Home Screen** (on newer iPads it's under **More**), and always play from that icon. It opens full-screen like an app. Safari can erase a website's saved progress after 7 days without a visit, but home screen apps are exempt. Progress in the home screen app and in a Safari tab are kept separately.
 
+**Offline:** the first time the app opens with signal, it saves itself on the device (about 1 MB, including the Spelling Bee recordings), so after that it opens and plays with no signal, like in the car. Progress made offline syncs the next time there's a connection. With signal, the app always loads the newest version. This is handled by `sw.js`.
+
 ## Credits
 Spelling Bee word recordings are by volunteers on Wikimedia Commons and keep their original open licenses. See [audio/CREDITS.md](audio/CREDITS.md).
 
