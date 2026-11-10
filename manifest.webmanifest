@@ -1,6 +1,6 @@
 {
-  "name": "Math Quest",
-  "short_name": "Math Quest",
+  "name": "Quest Academy",
+  "short_name": "Quest Academy",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b1033",

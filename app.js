@@ -501,6 +501,91 @@ GENERATORS.choice = p => {
   return CHOICE_TYPES[weightedPick(p, types, t => 'mc-' + t)](p);
 };
 
+/* =========================================================
+   Subjects: Math is built in; the others are question banks
+   loaded from subjects/*.js (window.SUBJECTS).
+   ========================================================= */
+const SUBJECTS = window.SUBJECTS || {};
+SUBJECTS.math = { name: 'Math', icon: '🔢', builtIn: true };
+const SUBJECT_ORDER = ['math', 'reading', 'writing', 'science', 'social'].filter(id => SUBJECTS[id]);
+const BANK = {};   // mission id -> { subject, mission }
+const QINDEX = {}; // question id -> { mid, q }
+SUBJECT_ORDER.forEach(sid => (SUBJECTS[sid].missions || []).forEach(m => {
+  BANK[m.id] = { subject: sid, mission: m };
+  (m.questions || []).forEach(q => { QINDEX[q.id] = { mid: m.id, q }; });
+  (m.passages || []).forEach(ps => ps.questions.forEach(q => { QINDEX[q.id] = { mid: m.id, q }; }));
+}));
+const forGrade = (item, p) => !item.grades || item.grades.includes(p.grade);
+const plainFill = (text, p) => String(text).replace(/\{name\}/g, p.name).replace(/\{buddy\}/g, theme(p).story.buddy);
+const fill = (text, p) => esc(plainFill(text, p)).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+
+function bankItems(m, p) {
+  if (m.passages) { const ps = m.passages.filter(x => forGrade(x, p)); return ps.length ? ps : m.passages; }
+  const qs = m.questions.filter(q => forGrade(q, p)); return qs.length >= 5 ? qs : m.questions;
+}
+function bankQuestionIds(m, p) {
+  return m.passages ? bankItems(m, p).flatMap(ps => ps.questions.map(q => q.id)) : bankItems(m, p).map(q => q.id);
+}
+// Mastered = answered right on the first try twice in a row
+function bankProgress(p, mid) {
+  const ids = bankQuestionIds(BANK[mid].mission, p);
+  return ids.reduce((a, id) => a + Math.min(2, (p.stats['q:' + id] || {}).box || 0), 0) / (2 * ids.length);
+}
+
+function buildBankQueue(m, p) {
+  if (m.passages) {
+    const seen = p.passages || (p.passages = {});
+    const two = shuffle(bankItems(m, p).slice()).sort((a, b) => (seen[a.id] || 0) - (seen[b.id] || 0)).slice(0, 2);
+    two.forEach(x => { seen[x.id] = (seen[x.id] || 0) + 1; });
+    return two.flatMap(x => x.questions.map(q => ({ q, passage: x })));
+  }
+  const pool = bankItems(m, p).slice(), out = [];
+  while (out.length < MISSION_LEN && pool.length) {
+    const q = weightedPick(p, pool, x => 'q:' + x.id);
+    out.push({ q }); pool.splice(pool.indexOf(q), 1);
+  }
+  return out;
+}
+
+const sayBtn = sel => `<button class="say" type="button" data-say="${sel}" aria-label="Read it to me">🔊</button>`;
+
+function bankQuestion(item, p) {
+  const q = item.q, key = 'q:' + q.id;
+  const passage = item.passage ? `<div class="passage">
+      <div class="passage-head">${sayBtn('.passage-text')}<h3>${item.passage.emoji || '📖'} ${esc(item.passage.title)}</h3></div>
+      <div class="passage-text"><p>${fill(item.passage.text, p)}</p></div></div>` : '';
+  const pic = q.emoji ? `<div class="q-emoji">${q.emoji}</div>` : '';
+  if (q.type === 'spell') {
+    const sentence = plainFill(q.sentence, p);
+    const blanked = esc(sentence).replace(new RegExp('\\b' + q.word + '\\b', 'i'), '<span class="blank">______</span>');
+    return {
+      key, spell: q.word, wordy: true, answer: q.word,
+      sayText: `${q.word}. ${sentence} ${q.word}.`,
+      prompt: `${pic}<p class="muted" style="margin:0 0 10px">Listen, then spell the word.</p>
+        <button class="btn" type="button" data-say-text>🔊 Hear the word</button>
+        <p class="story-text" style="margin:16px 0">${blanked}</p>
+        <input class="text spell-input" id="spell" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" aria-label="Type the word">`,
+      hint: r => r ? `<p class="explain">The word is <b>${esc(q.word)}</b></p>`
+        : `<p class="explain">💡 It starts with <b>${esc(q.word[0])}</b> and has <b>${q.word.length}</b> letters:<br><span class="letters">${esc(q.word[0])} ${'_ '.repeat(q.word.length - 1)}</span></p>`,
+    };
+  }
+  if (q.type === 'order') {
+    return {
+      key, order: q.words, wordy: true, answer: q.words.join(' '),
+      prompt: `${pic}<p class="muted" style="margin:0 0 10px">Tap the words to build a sentence.</p><div class="built" id="built"></div><div class="tiles" id="tiles"></div>`,
+      hint: r => r ? `<p class="explain"><b>${esc(q.words.join(' '))}</b></p>`
+        : `<p class="explain">💡 The sentence starts with <b>${esc(q.words[0])}</b>.<br><span class="muted">The word with the end mark (. ? !) goes last.</span></p>`,
+    };
+  }
+  // multiple choice
+  return {
+    key, wordy: true, answer: q.choices[q.answer],
+    choices: shuffle(q.choices.map((c, i) => ({ label: c, correct: i === q.answer }))),
+    prompt: `${passage}${pic}<div class="story">${sayBtn('.story-text')}<p class="story-text">${fill(q.q, p)}</p></div>`,
+    hint: r => `<p class="explain">💡 ${fill(q.hint, p)}</p>${r && q.explain ? `<p class="explain"><b>${fill(q.explain, p)}</b></p>` : ''}`,
+  };
+}
+
 // Spaced practice: shaky facts come back often, mastered ones rarely.
 function chooseFact(p, missionId, recent) {
   const pool = POOLS[missionId];
@@ -523,6 +608,7 @@ function record(p, key, correct) {
 }
 
 function mastery(p, missionId) {
+  if (BANK[missionId]) return bankProgress(p, missionId);
   if (POOLS[missionId]) {
     const pool = POOLS[missionId];
     return pool.filter(k => p.stats[k] && p.stats[k].box >= 3).length / pool.length;
@@ -558,7 +644,7 @@ function showProfiles() {
   render(`
     <div class="hero stack">
       <div class="big">🚀🐠🐶🧁</div>
-      <h1>Math Quest</h1>
+      <h1>Quest Academy</h1>
       <p class="muted" style="font-size:1.2rem">Who's playing today?</p>
     </div>
     <div class="profile-grid" style="margin-top:20px">
@@ -643,9 +729,12 @@ function showHome() {
   const p = me(); if (!p) return showProfiles();
   const th = theme(p);
   applyTheme(p.theme);
-  // suggest the least-mastered mission for this grade
-  const forGrade = MISSIONS.filter(m => m.grade <= p.grade || p.grade >= 3);
-  const suggested = forGrade.slice().sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
+  const subj = SUBJECTS[p.subject] ? p.subject : 'math';
+  const missions = subj === 'math'
+    ? MISSIONS.map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: m.grade }))
+    : SUBJECTS[subj].missions.map(m => ({ id: m.id, icon: m.icon, name: esc(m.name), desc: esc(m.desc), grade: 2 }));
+  // suggest the least-practiced mission for this grade
+  const suggested = missions.filter(m => m.grade <= p.grade).sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
   const found = p.found[p.theme] || 0;
   const streakOk = p.lastDay && dayDiff(p.lastDay, today()) <= 1;
 
@@ -661,14 +750,17 @@ function showHome() {
     <div class="stack">
       <div>
         <h1>${th.title}</h1>
-        <p class="muted" style="font-size:1.15rem;margin:6px 0 0">Pick a mission, ${th.playerWord.toLowerCase()}!</p>
+        <p class="muted" style="font-size:1.15rem;margin:6px 0 0">Pick a subject and a mission, ${th.playerWord.toLowerCase()}!</p>
+      </div>
+      <div class="subject-tabs" role="tablist">
+        ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}">${SUBJECTS[s].icon} ${SUBJECTS[s].name}</button>`).join('')}
       </div>
       <div class="mission-grid">
-        ${MISSIONS.map(m => {
-          const tm = th.missions[m.id], pct = showPct(progress(p, m.id));
+        ${missions.map(m => {
+          const tm = m, pct = showPct(progress(p, m.id));
           const label = POOLS[m.id] ? `${learnedCount(p, m.id)} facts learned · ${pct}%` : `${pct}% mastered`;
           return `<button class="mission" data-m="${m.id}">
-            ${m.id === suggested.id ? '<span class="tag">Try me!</span>' : ''}
+            ${suggested && m.id === suggested.id ? '<span class="tag">Try me!</span>' : ''}
             <span class="icon">${tm.icon}</span>
             <span class="name">${tm.name}</span>
             <span class="desc">${m.desc}</span>
@@ -676,6 +768,10 @@ function showHome() {
             <span class="mastery"><i style="width:${pct}%"></i></span>
           </button>`;
         }).join('')}
+        ${subj === 'writing' && SUBJECTS.writing.journalPrompts ? `<button class="mission" id="journal">
+            <span class="icon">📔</span><span class="name">My Journal</span>
+            <span class="desc">Write about anything you like</span>
+            <span class="mastery-label">${(p.journal || []).length} entries</span></button>` : ''}
       </div>
       <button class="card" id="coll" style="width:100%;text-align:left;display:flex;align-items:center;gap:14px">
         <span style="font-size:2.6rem">${found ? th.collectibles[found - 1][0] : '❔'}</span>
@@ -685,9 +781,46 @@ function showHome() {
     </div>
   `);
   bindAll('[data-m]', el => startMission(el.dataset.m));
+  bindAll('[data-s]', el => { p.subject = el.dataset.s; save(); showHome(); });
+  const j = document.getElementById('journal'); if (j) j.onclick = () => showJournal();
   document.getElementById('me').onclick = () => showEditProfile(p);
   document.getElementById('coll').onclick = showCollection;
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showHome(); };
+}
+
+/* ----- Journal ----- */
+function showJournal(promptIdx) {
+  const p = me(), th = theme(p), prompts = SUBJECTS.writing.journalPrompts;
+  p.journal = p.journal || [];
+  const day = Math.floor(Date.now() / 86400000);
+  const idx = promptIdx == null ? (day + p.id.length) % prompts.length : promptIdx % prompts.length;
+  const prompt = plainFill(prompts[idx], p);
+  render(`
+    <div class="topbar"><button class="btn ghost small" id="back">← Back</button><span class="chip">📔 My Journal</span><span></span></div>
+    <div class="card stack">
+      <div class="story">${sayBtn('.story-text')}<p class="story-text" style="font-size:1.4rem;font-weight:600;margin:0">${esc(prompt)}</p></div>
+      <button class="btn ghost small" id="another" style="align-self:flex-start">🎲 Give me a different idea</button>
+      <textarea class="text journal-text" id="jt" rows="8" placeholder="Start writing here..." autocorrect="off" spellcheck="false"></textarea>
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="saveJ">Save my writing ${th.pointIcon}</button></div>
+    </div>
+    ${p.journal.length ? `<h2 style="margin-top:26px">My writing</h2>
+      <div class="stack" style="margin-top:12px">${p.journal.slice(0, 20).map(e => `<div class="card journal-entry">
+        <div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('')}</div>` : ''}
+  `);
+  bindSay();
+  document.getElementById('back').onclick = showHome;
+  document.getElementById('another').onclick = () => showJournal(idx + 1);
+  document.getElementById('saveJ').onclick = () => {
+    const text = document.getElementById('jt').value.trim();
+    if (text.split(/\s+/).filter(Boolean).length < 5) { toast('Write a little more! ✏️'); return; }
+    p.journal.unshift({ date: today(), prompt, text });
+    p.journal = p.journal.slice(0, 200);
+    p.points += 5;
+    touchStreak(p); save();
+    sfx.win(); confetti('✏️');
+    toast(`Saved! +5 ${th.point}`);
+    showJournal(idx);
+  };
 }
 
 /* ----- Collection ----- */
@@ -710,16 +843,49 @@ function showCollection() {
 let game = null;
 
 function startMission(missionId) {
-  game = { missionId, n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false };
+  const b = BANK[missionId];
+  if (b && b.mission.learn) return showLearn(missionId);
+  beginMission(missionId);
+}
+
+function beginMission(missionId) {
+  const b = BANK[missionId], p = me();
+  game = { missionId, n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false,
+    queue: b ? buildBankQueue(b.mission, p) : null, qi: 0, len: MISSION_LEN };
+  if (b) { game.len = game.queue.length; save(); }
   nextQuestion();
+}
+
+/* ----- Learn cards (science, social studies) ----- */
+function showLearn(missionId) {
+  const m = BANK[missionId].mission, p = me();
+  render(`
+    <div class="topbar"><button class="btn ghost small" id="back">← Back</button><span class="chip">${m.icon} ${esc(m.name)}</span><span></span></div>
+    <h1>Let's learn!</h1>
+    <p class="muted" style="font-size:1.15rem">Read these facts, then answer the questions.</p>
+    <div class="learn-grid">
+      ${m.learn.map((c, i) => `<div class="card learn"><span class="e">${c.emoji}</span><p id="lc${i}">${fill(c.text, p)}</p>${sayBtn('#lc' + i)}</div>`).join('')}
+    </div>
+    <div class="row-actions" style="margin-top:22px"><button class="btn" id="go">I'm ready! ${theme(p).icon}</button></div>
+  `);
+  bindSay();
+  document.getElementById('back').onclick = showHome;
+  document.getElementById('go').onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} beginMission(missionId); };
+}
+
+function bindSay() {
+  if (!('speechSynthesis' in window)) { $app.querySelectorAll('[data-say],[data-say-text]').forEach(b => b.remove()); return; }
+  bindAll('[data-say]', el => { const t = $app.querySelector(el.dataset.say || '.story-text'); if (t) speak(t.innerText); });
+  bindAll('[data-say-text]', () => speak(game.q.sayText));
 }
 
 function nextQuestion() {
   const p = me();
-  if (game.n >= MISSION_LEN) return finishMission();
+  if (game.n >= game.len) return finishMission();
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
   if (due >= 0) q = game.retry.splice(due, 1)[0].q;
+  else if (game.queue) q = bankQuestion(game.queue[game.qi++], p);
   else if (game.missionId === 'story' || (STORY_TYPES[game.missionId] && (game.n === 3 || game.n === 7))) {
     // word problems: every question in the Story mission, and 2 of 10 elsewhere
     const types = storyTypesFor(game.missionId, p);
@@ -731,24 +897,33 @@ function nextQuestion() {
   else q = GENERATORS[game.missionId](p);
   game.recent = [q.key, ...game.recent].slice(0, 6);
   Object.assign(game, { q, input: '', tries: 0, locked: false });
+  if (q.order) {
+    game.placed = [];
+    const idx = q.order.map((_, i) => i);
+    do { shuffle(idx); } while (idx.length > 1 && idx.every((v, i) => v === i));
+    game.tileOrder = idx;
+  }
   drawPlay();
 }
 
 function drawPlay() {
-  const p = me(), th = theme(p), tm = th.missions[game.missionId];
-  const pct = (game.n / MISSION_LEN) * 100;
+  const p = me(), th = theme(p), tm = BANK[game.missionId] ? BANK[game.missionId].mission : th.missions[game.missionId];
+  const pct = (game.n / game.len) * 100;
+  const q = game.q;
   render(`
     <div class="play">
       <div class="topbar" style="margin:0">
         <button class="btn ghost small" id="quit">✕</button>
         <span class="chip">${tm.icon} ${tm.name}</span>
-        <span class="chip">${game.n + 1} / ${MISSION_LEN}</span>
+        <span class="chip">${game.n + 1} / ${game.len}</span>
       </div>
       <div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>
       <div class="card question ${game.q.wordy ? 'wordy' : ''}">${game.q.prompt}</div>
       <div class="feedback" id="fb" aria-live="polite"></div>
       <div class="hint" id="hint"></div>
-      ${game.q.choices
+      ${q.spell ? `<div class="row-actions"><button class="btn" id="checkText">Check ✓</button></div>`
+      : q.order ? `<div class="row-actions"><button class="btn" id="checkOrder" disabled>Check ✓</button></div>`
+      : game.q.choices
         ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${esc(c.label)}</button>`).join('')}</div>`
         : `<div class="pad" id="pad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
@@ -759,11 +934,14 @@ function drawPlay() {
   updateAnswer();
   bindAll('[data-k]', el => press(el.dataset.k));
   bindAll('[data-c]', el => choose(+el.dataset.c));
-  const say = $app.querySelector('[data-say]');
-  if (say) {
-    if (!('speechSynthesis' in window)) say.remove();
-    else say.onclick = () => speak($app.querySelector('.story-text').innerText);
+  bindSay();
+  if (q.spell) {
+    const input = document.getElementById('spell');
+    document.getElementById('checkText').onclick = checkSpell;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const n = document.getElementById('next'); n ? n.click() : checkSpell(); } });
+    setTimeout(() => speak(q.sayText), 350);
   }
+  if (q.order) { document.getElementById('checkOrder').onclick = checkOrder; drawOrder(); }
   document.getElementById('quit').onclick = () => { game = null; try { speechSynthesis.cancel(); } catch (e) {} showHome(); };
 }
 
@@ -789,7 +967,7 @@ function answeredRight(p, th) {
   fb.className = 'feedback good'; fb.textContent = pick(th.cheers) + ' ' + th.pointIcon;
   sfx.good(); save();
   game.n++;
-  document.getElementById('bar').style.width = (game.n / MISSION_LEN * 100) + '%';
+  document.getElementById('bar').style.width = (game.n / game.len * 100) + '%';
   setTimeout(nextQuestion, game.tries === 1 ? 900 : 1300);
 }
 
@@ -820,6 +998,62 @@ function choose(i) {
     hint.innerHTML = why + game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
     document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
   }
+}
+
+// Shared right/wrong flow for spelling and sentence building
+function judge(correct, ui) {
+  const p = me(), th = theme(p);
+  const fb = document.getElementById('fb'), hint = document.getElementById('hint');
+  game.tries++;
+  if (correct) { if (ui.good) ui.good(); return answeredRight(p, th); }
+  sfx.bad(); if (ui.bad) ui.bad();
+  if (game.tries === 1) {
+    record(p, game.q.key, false); save();
+    game.retry.push({ q: game.q, at: game.n + 3 });
+    fb.className = 'feedback bad'; fb.textContent = pick(th.oops);
+    hint.innerHTML = game.q.hint(false);
+    if (ui.retry) ui.retry();
+  } else {
+    game.locked = true;
+    fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(game.q.answer)}</b>. You'll see this one again!`;
+    if (ui.reveal) ui.reveal();
+    hint.innerHTML = game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
+    document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
+  }
+}
+
+function checkSpell() {
+  if (!game || game.locked) return;
+  const input = document.getElementById('spell'), v = input.value.trim().toLowerCase();
+  if (!v) { input.focus(); return; }
+  judge(v === game.q.spell, {
+    good: () => input.classList.add('good'),
+    bad: () => input.classList.add('bad'),
+    retry: () => setTimeout(() => { input.value = ''; input.classList.remove('bad'); }, 500),
+    reveal: () => { input.value = game.q.spell; input.disabled = true; input.classList.remove('bad'); input.classList.add('good'); },
+  });
+}
+
+function drawOrder() {
+  const q = game.q, built = document.getElementById('built'), tiles = document.getElementById('tiles');
+  built.innerHTML = game.placed.map((i, j) => `<button class="tile" data-b="${j}">${esc(q.order[i])}</button>`).join('') || '<span class="muted">Your sentence goes here</span>';
+  tiles.innerHTML = game.tileOrder.map(i => game.placed.includes(i)
+    ? `<span class="tile used">${esc(q.order[i])}</span>`
+    : `<button class="tile" data-t="${i}">${esc(q.order[i])}</button>`).join('');
+  built.querySelectorAll('[data-b]').forEach(b => { b.onclick = () => { if (game.locked) return; game.placed.splice(+b.dataset.b, 1); drawOrder(); }; });
+  tiles.querySelectorAll('[data-t]').forEach(b => { b.onclick = () => { if (game.locked) return; game.placed.push(+b.dataset.t); drawOrder(); }; });
+  document.getElementById('checkOrder').disabled = game.locked || game.placed.length !== q.order.length;
+}
+
+function checkOrder() {
+  if (!game || game.locked) return;
+  const q = game.q, built = document.getElementById('built');
+  judge(game.placed.map(i => q.order[i]).join(' ') === q.order.join(' '), {
+    good: () => built.classList.add('good'),
+    bad: () => built.classList.add('bad'),
+    retry: () => setTimeout(() => { built.classList.remove('bad'); game.placed = []; drawOrder(); }, 600),
+    reveal: () => { built.classList.remove('bad'); game.placed = q.order.map((_, i) => i); drawOrder(); built.classList.add('good'); },
+  });
 }
 
 function check() {
@@ -859,17 +1093,20 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter') { const n = document.getElementById('next'); n ? n.click() : press('go'); }
 });
 
+function touchStreak(p) {
+  const t = today();
+  if (p.lastDay !== t) { p.streak = p.lastDay && dayDiff(p.lastDay, t) === 1 ? p.streak + 1 : 1; p.lastDay = t; }
+}
+
 function finishMission() {
   const p = me(), th = theme(p);
   const m = p.missions[game.missionId] || (p.missions[game.missionId] = { plays: 0, history: [] });
   m.plays++; m.history = [...m.history, game.firstTry].slice(-20);
-  const perfect = game.firstTry === MISSION_LEN;
+  const len = game.len, perfect = game.firstTry === len;
   const earned = game.firstTry + (perfect ? 5 : 0);
   p.points += earned;
 
-  // streak
-  const t = today();
-  if (p.lastDay !== t) { p.streak = p.lastDay && dayDiff(p.lastDay, t) === 1 ? p.streak + 1 : 1; p.lastDay = t; }
+  touchStreak(p);
 
   // new collectible each mission until the set is complete
   const found = p.found[p.theme] || 0;
@@ -886,7 +1123,7 @@ function finishMission() {
       ${prize ? `<div class="prize">${prize[0]}</div>
         <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>!</p>`
         : `<div class="prize">🏆</div><h2>You found everything in ${th.collection}!</h2>`}
-      <p style="font-size:1.3rem">You got <b>${right} of ${MISSION_LEN}</b> right on the first try
+      <p style="font-size:1.3rem">You got <b>${right} of ${len}</b> right on the first try
         ${perfect ? '<br>🎯 <b>Perfect!</b> +5 bonus' : ''}<br>+${earned} ${th.point} ${th.pointIcon}</p>
       <div class="row-actions">
         <button class="btn" id="again">Play again</button>
@@ -934,6 +1171,13 @@ function labelKey(k) {
     'wp-missing': 'Story: missing part', 'wp-money': 'Story: money', 'wp-pvbundle': 'Story: hundreds/tens/ones',
     'wp-groups': 'Story: equal groups', 'wp-share': 'Story: sharing equally', 'wp-buy': 'Story: how many can you buy',
     'wp-twostep': 'Story: two steps' };
+  if (k.startsWith('q:')) {
+    const hit = QINDEX[k.slice(2)];
+    if (!hit) return k;
+    const q = hit.q, m = BANK[hit.mid].mission.name;
+    const text = q.type === 'spell' ? `spell "${q.word}"` : q.type === 'order' ? q.words.join(' ') : q.q.replace(/\{name\}/g, 'name').replace(/\{buddy\}/g, 'buddy');
+    return `${m}: ${text.length > 60 ? text.slice(0, 57) + '…' : text}`;
+  }
   return names[k] || k.replace('-', ' − ').replace('+', ' + ').replace('×', ' × ').replace('÷', ' ÷ ');
 }
 
@@ -946,12 +1190,13 @@ function showParents() {
     ${state.profiles.length ? '' : '<p>No players yet.</p>'}
     <div class="stack">
     ${state.profiles.map(p => {
-      const rows = MISSIONS.map(m => {
+      const rows = SUBJECT_ORDER.map(sid => `<tr class="subject-row"><th colspan="4">${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</th></tr>` +
+        (sid === 'math' ? MISSIONS : SUBJECTS[sid].missions).map(m => {
         const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
         const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
         const mm = p.missions[m.id] || { plays: 0 };
-        return `<tr><td>${m.desc}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
-      }).join('');
+        return `<tr><td>${esc(sid === 'math' ? m.desc : m.name)}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
+      }).join('')).join('');
       return `<div class="card stack">
         <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${p.grade === 2 ? '2nd' : '3rd'} grade · ${THEMES[p.theme].name}</span></h2>
         <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'}</p>
@@ -959,6 +1204,8 @@ function showParents() {
         <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
         <div><b>Common mistakes</b> <span class="muted">(from the multiple choice mission)</span><div class="facts" style="margin-top:8px">${
           Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
+        <div><b>Journal</b> <span class="muted">(${(p.journal || []).length} entries)</span>${(p.journal || []).slice(0, 5).map(e =>
+          `<div class="journal-entry" style="margin-top:10px"><div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('') || '<div class="muted">Nothing written yet.</div>'}</div>
         <div><button class="btn ghost small" data-del="${p.id}">Delete player</button></div>
       </div>`;
     }).join('')}
@@ -973,6 +1220,7 @@ function showParents() {
   });
 }
 function missionOf(k) {
+  if (k.startsWith('q:')) return (QINDEX[k.slice(2)] || {}).mid;
   if (k.startsWith('wp-')) return 'story';
   if (k.startsWith('mc-')) return 'choice';
   if (k.startsWith('pv-')) return 'place';
