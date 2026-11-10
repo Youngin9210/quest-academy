@@ -344,3 +344,19 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .acct-more[open] > *:not(summary) { margin-top: 8px; }
 .acct-more .text { margin-bottom: 4px; }
 .invite-link .text { max-width: none; font-size: 1rem; }
+
+/* ---------- 4th-5th grade math ---------- */
+.frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; line-height: 1.05; margin: 0 .12em; font-weight: 700; }
+.frac span:first-child { border-bottom: .09em solid currentColor; padding: 0 .15em; }
+.pad .wide { grid-column: 1 / -1; }
+.rect { position: relative; margin: 6px auto 34px; width: calc(var(--l) * 22px); height: calc(var(--w) * 22px); max-width: 90%;
+  background: color-mix(in srgb, var(--accent2) 30%, transparent); border: 4px solid var(--accent2); border-radius: 6px; }
+.rect .rl { position: absolute; left: 50%; bottom: -32px; transform: translateX(-50%); font-size: 1.1rem; font-weight: 700; white-space: nowrap; }
+.rect .rw { position: absolute; top: 50%; right: -8px; transform: translate(100%, -50%); font-size: 1.1rem; font-weight: 700; white-space: nowrap; }
+.prism { font-size: 3.4rem; line-height: 1; margin-bottom: 6px; }
+.levels { margin-top: 4px; }
+.levels summary { cursor: pointer; font-weight: 600; font-size: 1.05rem; }
+.level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+.level-grid label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.level-grid select { font-family: inherit; font-size: 1rem; padding: 8px; border-radius: 10px; border: 2px solid var(--card-border); background: var(--card); color: var(--ink); }
+.question .frac { font-size: 1.5em; }

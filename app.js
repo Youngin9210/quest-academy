@@ -35,6 +35,11 @@ function save() {
   writeStore();
 }
 const me = () => state.profiles.find(p => p.id === state.current);
+const GRADES = [2, 3, 4, 5];
+const gradeName = g => ({ 2: '2nd', 3: '3rd', 4: '4th', 5: '5th' }[g] || g + 'th');
+const levelOf = (p, subject) => (p.levels && p.levels[subject]) || p.grade;
+// a view of the player at their level for one subject (reads/writes still go to the real player)
+const atLevel = (p, subject) => { const v = Object.create(p); Object.defineProperty(v, 'grade', { value: levelOf(p, subject) }); return v; };
 const theme = (p = me()) => THEMES[(p && p.theme) || 'space'] || THEMES.space;
 
 function newProfile(name, avatar, grade, themeId) {
@@ -238,6 +243,7 @@ const STORY_TYPES = {
 };
 function storyTypesFor(missionId, p) {
   if (missionId !== 'story') return STORY_TYPES[missionId];
+  if (p.grade >= 4) return ['groups', 'share', 'buy', 'twostep', 'twostep', 'times', 'times', 'money'];
   return p.grade >= 3
     ? ['join', 'separate', 'compare', 'money', 'groups', 'share', 'buy', 'twostep', 'twostep']
     : ['join', 'separate', 'compare', 'missing', 'money', 'pvbundle'];
@@ -313,20 +319,28 @@ function makeStory(type, p, big) {
       clue = 'Boxes of 100 are <b>hundreds</b>, bags of 10 are <b>tens</b>, loose ones are <b>ones</b>.';
       return storyQ('wp-pvbundle', text, n, false, r => `<p class="explain">${clue}</p>${pvChart(n)}<p class="explain">${h} hundreds + ${t} tens + ${o} ones = <b>${r ? n : '?'}</b></p>`);
     }
+    case 'times': {
+      const base = rand(3, p.grade >= 5 ? 25 : 12), k = rand(2, p.grade >= 5 ? 12 : 9);
+      a = base; b = k; op = '×';
+      text = `${B} found ${pl(base, it)}. ${N} found ${k} times as many. How many ${it[1]} did ${N} find?`;
+      clue = '“Times as many” means <b>multiply</b>.';
+      break;
+    }
     case 'groups':
-      a = rand(2, 10); b = rand(2, 10); op = '×';
+      if (p.grade >= 4) { a = rand(3, 9); b = rand(12, p.grade >= 5 ? 250 : 99); } else { a = rand(2, 10); b = rand(2, 10); }
+      op = '×';
       text = `${N} has ${pl(a, gr)}. Each ${gr[0]} has ${pl(b, it)}. How many ${it[1]} are there in all?`;
       clue = 'Equal groups means <b>multiply</b>: groups × how many in each.';
       break;
     case 'share': {
-      const groups = rand(2, 10), each = rand(2, 10);
+      const groups = rand(2, 10), each = p.grade >= 4 ? rand(11, 60) : rand(2, 10);
       a = groups * each; op = '÷'; b = groups;
       text = `${N} has ${a} ${it[1]} and puts them into ${groups} ${gr[1]}, with the same number in each ${gr[0]}. How many ${it[1]} go in each ${gr[0]}?`;
       clue = 'Sharing equally means <b>divide</b>.';
       break;
     }
     case 'buy': {
-      const price = rand(2, 10), qty = rand(2, 10);
+      const price = p.grade >= 4 ? rand(4, 25) : rand(2, 10), qty = rand(2, p.grade >= 4 ? 15 : 10);
       a = price * qty; op = '÷'; b = price;
       text = `${N} goes to ${S.shop} with $${a}. Each ${buy[0]} costs $${price}. How many ${buy[1]} can ${N} buy?`;
       clue = `How many groups of $${price} fit into $${a}? That's <b>divide</b>.`;
@@ -560,20 +574,23 @@ const fill = (text, p) => esc(plainFill(text, p)).replace(/\n\n/g, '</p><p>').re
 
 function bankItems(m, p) {
   if (m.passages) { const ps = m.passages.filter(x => forGrade(x, p)); return ps.length ? ps : m.passages; }
-  const qs = m.questions.filter(q => forGrade(q, p)); return qs.length >= 5 ? qs : m.questions;
+  // spelling words are only used when we have a real person's recording of them
+  const usable = m.questions.filter(q => q.type !== 'spell' || (window.SPELL_AUDIO && SPELL_AUDIO[q.word]));
+  const qs = usable.filter(q => forGrade(q, p)); return qs.length >= 5 ? qs : usable;
 }
 function bankQuestionIds(m, p) {
   return m.passages ? bankItems(m, p).flatMap(ps => ps.questions.map(q => q.id)) : bankItems(m, p).map(q => q.id);
 }
 // Mastered = answered right on the first try twice in a row
 function bankProgress(p, mid) {
+  p = atLevel(p, BANK[mid].subject);
   const ids = bankQuestionIds(BANK[mid].mission, p);
   return ids.reduce((a, id) => a + Math.min(2, (p.stats['q:' + id] || {}).box || 0), 0) / (2 * ids.length);
 }
 
 function buildBankQueue(m, p) {
   if (m.passages) {
-    const seen = p.passages || (p.passages = {});
+    const seen = p.passages;
     const two = shuffle(bankItems(m, p).slice()).sort((a, b) => (seen[a.id] || 0) - (seen[b.id] || 0)).slice(0, 2);
     two.forEach(x => { seen[x.id] = (seen[x.id] || 0) + 1; });
     return two.flatMap(x => x.questions.map(q => ({ q, passage: x })));
@@ -630,6 +647,190 @@ function bankQuestion(item, p) {
     hint: r => `<p class="explain">💡 ${fill(q.hint, p)}</p>${r && q.explain ? `<p class="explain"><b>${fill(q.explain, p)}</b></p>` : ''}`,
   };
 }
+
+/* =========================================================
+   Math for 4th and 5th grade (generated, like the 2nd-3rd missions)
+   ========================================================= */
+const MISSIONS45 = [
+  { id: 'muldiv',    grade: 4, desc: 'Times & divide facts review' },
+  { id: 'multi',     grade: 4, desc: 'Multi-digit multiplication' },
+  { id: 'longdiv',   grade: 4, desc: 'Long division' },
+  { id: 'fractions', grade: 4, desc: 'Fractions' },
+  { id: 'decimals',  grade: 4, desc: 'Decimals' },
+  { id: 'measure',   grade: 4, desc: 'Area, perimeter & volume' },
+  { id: 'story',     grade: 4, desc: 'Word problems' },
+];
+const fracHtml = (n, d) => `<span class="frac"><span>${n}</span><span>${d}</span></span>`;
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const simp = (n, d) => { const g = gcd(n, d); return [n / g, d / g]; };
+const fracLabel = (n, d) => d === 1 ? String(n) : `${n}/${d}`;
+const vert = (top, op, bottom) => `<span class="vertical big-math"><span>${top}</span><span>${op} ${bottom}</span><span class="line"></span><span class="answer-box" id="ans"></span></span>`;
+Object.assign(MISTAKES, {
+  'frac-add-both':   ['Added the bottom numbers', 'Only the top numbers get added when the bottoms match. The bottom number tells the size of the pieces!'],
+  'frac-big-bottom': ['Thought a bigger bottom number is bigger', 'A bigger bottom number means MORE pieces, so each piece is SMALLER.'],
+  'frac-no-common':  ['Added without a common denominator', 'Make the bottom numbers the same first, then add the tops.'],
+  'dec-longer':      ['Thought more digits means bigger', 'Compare tenths first, then hundredths. 0.5 is the same as 0.50, which is more than 0.45!'],
+  'dec-place':       ['Moved the decimal the wrong way', 'Multiplying by 10 makes a number BIGGER: every digit moves one place to the left.'],
+  'area-perim':      ['Mixed up area and perimeter', 'Perimeter goes AROUND the edge (add the sides). Area fills the INSIDE (length × width).'],
+});
+
+Object.assign(GENERATORS, {
+  multi(p) {
+    const g = p.grade, kind = pick(g >= 5 ? ['3x2', '3x2', '4x1', '2x2'] : ['2x1', '3x1', '3x1', '4x1', '2x2']);
+    const [da, db] = kind.split('x').map(Number);
+    // no numbers ending in 0, so the step-by-step hint always has more than one step
+    const noZero = (lo, hi) => { let x; do { x = rand(lo, hi); } while (x % 10 === 0); return x; };
+    const a = noZero(10 ** (da - 1) + 1, 10 ** da - 1), b = db === 1 ? rand(3, 9) : noZero(11, db === 2 ? 49 : 99);
+    const ans = a * b;
+    return {
+      key: 'mul-' + kind, answer: ans, wordy: false,
+      prompt: vert(a, '×', b),
+      hint: r => {
+        if (db === 1) {   // break the big number into place values
+          const parts = String(a).split('').map((d, i, s) => +d * 10 ** (s.length - 1 - i)).filter(Boolean);
+          return `<p class="explain">Break ${a} into ${parts.join(' + ')}<br>${parts.map(x => `${x} × ${b} = ${x * b}`).join('<br>')}<br>Add them up: <b>${r ? ans : '?'}</b></p>`;
+        }
+        const bt = b - b % 10, bo = b % 10;
+        return `<p class="explain">Split ${b} into ${bt} + ${bo}<br>${a} × ${bt} = ${a * bt}<br>${a} × ${bo} = ${a * bo}<br>${a * bt} + ${a * bo} = <b>${r ? ans : '?'}</b></p>`;
+      },
+    };
+  },
+  longdiv(p) {
+    const g = p.grade, kind = pick(g >= 5 ? ['2digit', '2digit', 'exact', 'rem'] : ['exact', 'exact', 'rem']);
+    let b, q, rem = 0;
+    if (kind === '2digit') { b = rand(12, 25); q = rand(12, 60); }
+    else { b = rand(3, 9); q = rand(g >= 5 ? 105 : 21, g >= 5 ? 999 : 299); if (kind === 'rem') rem = rand(1, b - 1); }
+    const a = b * q + rem;
+    const askRem = kind === 'rem' && Math.random() < .5;
+    const ans = askRem ? rem : q;
+    const est = Math.floor(q / 10) * 10;
+    return {
+      key: 'div-' + kind, answer: ans, wordy: true,
+      prompt: `${askRem ? `What is the <b>remainder</b>?` : kind === 'rem' ? 'What is the quotient? <span class="muted">(ignore the remainder)</span>' : ''}
+        <div class="big-math">${a} ÷ ${b} = <span class="answer-box" id="ans"></span></div>`,
+      hint: r => `<p class="explain">Think: how many groups of ${b} fit in ${a}?<br>${b} × ${est} = ${b * est}, and ${a} − ${b * est} = ${a - b * est} is left.<br>How many more ${b}s fit in ${a - b * est}?
+        ${r ? `<br>${a} ÷ ${b} = <b>${q}</b>${rem ? ` remainder <b>${rem}</b>` : ''}` : ''}</p>`,
+    };
+  },
+  fractions(p) {
+    const g = p.grade;
+    const kinds = g >= 5 ? ['addUnlike', 'addUnlike', 'mulWhole', 'mulFrac', 'compare', 'simplify'] : ['equiv', 'compare', 'compare', 'addSame', 'subSame', 'mixed'];
+    const kind = weightedPick(p, kinds, k => 'frac-' + k);
+    const den = pick([3, 4, 5, 6, 8, 10, 12]);
+    const C = (label, correct, tag) => ({ label, correct, tag, html: label.includes('/') ? fracHtml(...label.split('/')) : null });
+    if (kind === 'equiv') {
+      const [n, d] = simp(rand(1, den - 1), den), k = rand(2, 4);
+      return mcQ('frac-equiv', `Which fraction is equal to ${fracHtml(n, d)}?`, [
+        C(`${n * k}/${d * k}`, true), C(`${n + k}/${d + k}`), C(`${n * k}/${d}`), C(`${n}/${d * k}`)],
+        r => `<p class="explain">Multiply the top AND bottom by the same number.${r ? `<br>${fracHtml(n, d)} × ${fracHtml(k, k)} = ${fracHtml(n * k, d * k)}` : ''}</p>`);
+    }
+    if (kind === 'compare') {
+      const sameTop = Math.random() < .5;
+      let a1, b1, a2, b2;
+      if (sameTop) { a1 = a2 = rand(1, 3); b1 = rand(a1 + 1, 6); do { b2 = rand(a2 + 1, 12); } while (b2 === b1); }
+      else { b1 = pick([4, 6, 8]); b2 = pick([3, 5, 10]); a1 = rand(1, b1 - 1); a2 = rand(1, b2 - 1); if (a1 / b1 === a2 / b2) a1 = Math.max(1, a1 - 1); }
+      const bigger = a1 / b1 > a2 / b2 ? `${a1}/${b1}` : `${a2}/${b2}`, smaller = bigger === `${a1}/${b1}` ? `${a2}/${b2}` : `${a1}/${b1}`;
+      return mcQ('frac-compare', `Which fraction is <b>greater</b>?`, [C(bigger, true), C(smaller, false, sameTop ? 'frac-big-bottom' : null)],
+        r => `<p class="explain">${sameTop ? 'Same top number? Then the one with SMALLER pieces (bigger bottom) is less.' : 'Compare each to ½, or make the bottoms the same.'}${r ? `<br><b>${bigger.replace('/', '⁄')}</b> is greater` : ''}</p>`);
+    }
+    if (kind === 'addSame' || kind === 'subSame') {
+      const add = kind === 'addSame';
+      let x = rand(1, den - 1), y = rand(1, den - 1);
+      if (add && x + y > den) y = den - x; if (!add && y > x) [x, y] = [y, x]; if (!add && x === y) x = Math.min(den - 1, x + 1);
+      const n = add ? x + y : x - y;
+      return mcQ('frac-' + kind, `${fracHtml(x, den)} ${add ? '+' : '−'} ${fracHtml(y, den)} = ?`, [
+        C(`${n}/${den}`, true), add ? C(`${n}/${den * 2}`, false, 'frac-add-both') : C(`${n}/${den * 2}`), C(`${add ? x * y : x + y}/${den}`), C(`${n + 1}/${den}`)],
+        r => `<p class="explain">The pieces are the same size (${den}ths), so just ${add ? 'add' : 'subtract'} the top numbers.${r ? `<br>${x} ${add ? '+' : '−'} ${y} = ${n}, so <b>${n}/${den}</b>` : ''}</p>`);
+    }
+    if (kind === 'mixed') {
+      const whole = rand(1, 3), d = pick([2, 3, 4, 5]), n = rand(1, d - 1), imp = whole * d + n;
+      return mcQ('frac-mixed', `Which is the same as ${whole}${fracHtml(n, d)}?`, [C(`${imp}/${d}`, true), C(`${whole + n}/${d}`), C(`${whole * n}/${d}`), C(`${imp}/${d + whole}`)],
+        r => `<p class="explain">Each whole is ${d} pieces: ${whole} × ${d} = ${whole * d} pieces, plus ${n} more.${r ? `<br>${whole * d} + ${n} = ${imp}, so <b>${imp}/${d}</b>` : ''}</p>`);
+    }
+    if (kind === 'addUnlike') {
+      const d1 = pick([2, 3, 4, 5]), d2 = pick([3, 4, 6, 8, 10].filter(x => x !== d1)), n1 = rand(1, d1 - 1), n2 = rand(1, d2 - 1);
+      const L = d1 * d2 / gcd(d1, d2), N = n1 * L / d1 + n2 * L / d2, [sn, sd] = simp(N, L);
+      return mcQ('frac-addUnlike', `${fracHtml(n1, d1)} + ${fracHtml(n2, d2)} = ?`, [
+        C(fracLabel(sn, sd), true), C(`${n1 + n2}/${d1 + d2}`, false, 'frac-no-common'), C(`${n1 + n2}/${L}`), C(fracLabel(...simp(N + 1, L)))],
+        r => `<p class="explain">Make the bottoms match: both can become <b>${L}ths</b>.<br>${fracHtml(n1, d1)} = ${fracHtml(n1 * L / d1, L)} and ${fracHtml(n2, d2)} = ${fracHtml(n2 * L / d2, L)}${r ? `<br>Add the tops: ${fracHtml(N, L)}${sd !== L ? ` = ${fracHtml(sn, sd)}` : ''}` : ''}</p>`);
+    }
+    if (kind === 'mulWhole') {
+      const w = rand(2, 6), d = pick([3, 4, 5, 6, 8]), n = rand(1, d - 1), [sn, sd] = simp(w * n, d);
+      return mcQ('frac-mulWhole', `${w} × ${fracHtml(n, d)} = ?`, [C(fracLabel(sn, sd), true), C(`${w * n}/${w * d}`), C(`${n}/${w * d}`), C(fracLabel(...simp(w + n, d)))],
+        r => `<p class="explain">${w} groups of ${fracHtml(n, d)}: multiply the top by ${w}.${r ? `<br>${w} × ${n} = ${w * n}, so ${fracHtml(w * n, d)}${sd !== d ? ` = ${fracHtml(sn, sd)}` : ''}` : ''}</p>`);
+    }
+    if (kind === 'mulFrac') {
+      const d1 = pick([2, 3, 4, 5]), d2 = pick([2, 3, 4, 5, 6]), n1 = rand(1, d1 - 1), n2 = rand(1, d2 - 1), [sn, sd] = simp(n1 * n2, d1 * d2);
+      return mcQ('frac-mulFrac', `${fracHtml(n1, d1)} × ${fracHtml(n2, d2)} = ?`, [C(fracLabel(sn, sd), true), C(`${n1 + n2}/${d1 + d2}`), C(fracLabel(...simp(n1 * d2, d1 * n2))), C(`${n1 * n2}/${d1 + d2}`)],
+        r => `<p class="explain">Multiply top × top and bottom × bottom.${r ? `<br>${n1}×${n2} = ${n1 * n2}, ${d1}×${d2} = ${d1 * d2} → ${fracHtml(n1 * n2, d1 * d2)}${sd !== d1 * d2 ? ` = ${fracHtml(sn, sd)}` : ''}` : ''}</p>`);
+    }
+    // simplify
+    const bd0 = rand(3, 9), [bn, bd] = simp(rand(1, bd0 - 1), bd0), k = rand(2, 5), n = bn * k, d = bd * k;
+    const ok = l => { const [x, y] = l.split('/').map(Number); return x > 0 && y > 1 && x < y; };
+    return mcQ('frac-simplify', `Write ${fracHtml(n, d)} in <b>simplest form</b>.`, [C(`${bn}/${bd}`, true), ...[`${n}/${d}`, `${n - 1}/${d - k}`, `${bn}/${d}`, `${bn + 1}/${bd + 1}`].filter(ok).slice(0, 3).map(l => C(l))],
+      r => `<p class="explain">Find the biggest number that divides both ${n} and ${d}.${r ? `<br>Divide both by ${gcd(n, d)}: <b>${fracLabel(bn, bd)}</b>` : ''}</p>`);
+  },
+  decimals(p) {
+    const g = p.grade;
+    const kinds = g >= 5 ? ['addDec', 'subDec', 'times10', 'roundDec', 'compareDec'] : ['toDec', 'compareDec', 'compareDec', 'fracToDec', 'addDec'];
+    const kind = weightedPick(p, kinds, k => 'dec-' + k);
+    const num = (q) => ({ ...q, decimal: true, wordy: false });
+    if (kind === 'toDec') {
+      const h = rand(1, 99), d = h % 10 === 0 ? 10 : 100, n = d === 10 ? h / 10 : h, val = n / d;
+      return num({ key: 'dec-toDec', answer: val, prompt: `<div class="big-math">${fracHtml(n, d)} = <span class="answer-box" id="ans"></span></div>`,
+        hint: r => `<p class="explain">${d === 10 ? 'Tenths' : 'Hundredths'} go ${d === 10 ? 'one place' : 'two places'} after the decimal point.${r ? `<br><b>${val}</b>` : `<br>${d === 100 && n < 10 ? 'Remember a 0 in the tenths place!' : ''}`}</p>` });
+    }
+    if (kind === 'fracToDec') {
+      const pairs = [[1, 2, .5], [1, 4, .25], [3, 4, .75], [1, 5, .2], [2, 5, .4], [3, 5, .6], [4, 5, .8], [1, 10, .1]], [n, d, v] = pick(pairs);
+      return num({ key: 'dec-fracToDec', answer: v, prompt: `<div class="big-math">${fracHtml(n, d)} = <span class="answer-box" id="ans"></span></div><p class="muted">Write it as a decimal.</p>`,
+        hint: r => `<p class="explain">Make the bottom 10 or 100: ${fracHtml(n, d)} = ${fracHtml(n * (100 / d), 100)}${r ? ` = <b>${v}</b>` : ''}</p>` });
+    }
+    if (kind === 'compareDec') {
+      const a = rand(1, 9) / 10, b = Math.round((a - rand(1, 9) / 100) * 100) / 100;
+      const [x, y] = Math.random() < .5 ? [a, b] : [b, a];
+      return mcQ('dec-compareDec', `Which decimal is <b>greater</b>?`, [{ label: String(Math.max(x, y)), correct: true }, { label: String(Math.min(x, y)), tag: 'dec-longer' }],
+        r => `<p class="explain">Line up the decimal points and compare the tenths first.<br>${a.toFixed(2)} vs ${b.toFixed(2)}${r ? `<br><b>${Math.max(a, b)}</b> is greater` : ''}</p>`);
+    }
+    if (kind === 'addDec' || kind === 'subDec') {
+      const add = kind === 'addDec', big = g >= 5;
+      let a = rand(big ? 110 : 11, big ? 999 : 99) / (big ? 100 : 10), b = rand(big ? 11 : 1, big ? 499 : 49) / (big ? 100 : 10);
+      if (!add && b > a) [a, b] = [b, a];
+      const ans = Math.round((add ? a + b : a - b) * 100) / 100, places = big ? 2 : 1;
+      return num({ key: 'dec-' + kind, answer: ans, prompt: vert(a.toFixed(places), add ? '+' : '−', b.toFixed(places)),
+        hint: r => `<p class="explain">Line up the decimal points, then ${add ? 'add' : 'subtract'} like whole numbers.${r ? `<br><b>${ans}</b>` : ''}</p>` });
+    }
+    if (kind === 'times10') {
+      const m = pick([10, 100, 1000]), a = rand(11, 999) / 100, ans = Math.round(a * m * 1000) / 1000;
+      return num({ key: 'dec-times10', answer: ans, prompt: `<div class="big-math">${a} × ${m} = <span class="answer-box" id="ans"></span></div>`,
+        hint: r => `<p class="explain">× ${m} moves every digit <b>${String(m).length - 1} place${m > 10 ? 's' : ''} to the left</b> (the number gets bigger).${r ? `<br><b>${ans}</b>` : ''}</p>` });
+    }
+    // roundDec
+    const a = rand(101, 999) / 100, toWhole = Math.random() < .4, ans = toWhole ? Math.round(a) : Math.round(a * 10) / 10;
+    return num({ key: 'dec-roundDec', answer: ans, prompt: `<div class="big-math">Round <b>${a}</b> to the nearest ${toWhole ? 'whole number' : 'tenth'}: <span class="answer-box" id="ans"></span></div>`,
+      hint: r => `<p class="explain">Look at the digit just to the right: 5 or more rounds up.${r ? `<br><b>${ans}</b>` : ''}</p>` });
+  },
+  measure(p) {
+    const g = p.grade, kind = weightedPick(p, g >= 5 ? ['volume', 'volume', 'area', 'perimeter'] : ['area', 'perimeter', 'side'], k => 'meas-' + k);
+    const L = rand(3, 12), W = rand(2, 9), unit = pick(['cm', 'm', 'in', 'ft']);
+    const rect = (l, w, label = true) => `<div class="rect" style="--l:${l};--w:${w}"><span class="rl">${label ? l + ' ' + unit : '?'}</span><span class="rw">${w} ${unit}</span></div>`;
+    if (kind === 'volume') {
+      const H = rand(2, 6), ans = L * W * H;
+      return { key: 'meas-volume', answer: ans, wordy: true,
+        prompt: `<div class="prism">📦</div>A box is <b>${L} ${unit}</b> long, <b>${W} ${unit}</b> wide and <b>${H} ${unit}</b> tall. What is its <b>volume</b>?<br><span class="answer-box" id="ans"></span> cubic ${unit}`,
+        hint: r => `<p class="explain">Volume = length × width × height<br>${L} × ${W} = ${L * W} (one layer), × ${H} layers = <b>${r ? ans : '?'}</b></p>` };
+    }
+    if (kind === 'side') {
+      const area = L * W;
+      return { key: 'meas-side', answer: L, wordy: true,
+        prompt: `${rect(L, W, false)}This rectangle has an area of <b>${area} square ${unit}</b>. How long is the missing side?<br><span class="answer-box" id="ans"></span> ${unit}`,
+        hint: r => `<p class="explain">Area = length × width, so ${W} × ? = ${area}${r ? `<br>${area} ÷ ${W} = <b>${L}</b>` : ''}</p>` };
+    }
+    const area = kind === 'area', ans = area ? L * W : 2 * (L + W);
+    return { key: 'meas-' + kind, answer: ans, wordy: true,
+      prompt: `${rect(L, W)}What is the <b>${area ? 'area' : 'perimeter'}</b> of this rectangle?<br><span class="answer-box" id="ans"></span> ${area ? 'square ' : ''}${unit}`,
+      hint: r => `<p class="explain">${area ? `Area fills the inside: length × width<br>${L} × ${W} = <b>${r ? ans : '?'}</b>` : `Perimeter goes all the way around: add all 4 sides<br>${L} + ${W} + ${L} + ${W} = <b>${r ? ans : '?'}</b>`}</p>` };
+  },
+});
 
 // Spaced practice: shaky facts come back often, mastered ones rarely.
 function chooseFact(p, missionId, recent) {
@@ -715,7 +916,7 @@ function showProfiles() {
 /* ----- Create / edit player ----- */
 function showEditProfile(existing) {
   const d = existing || { name: '', avatar: null, grade: 2, theme: 'space' };
-  let sel = { name: d.name, avatar: d.avatar, grade: d.grade, theme: d.theme };
+  let sel = { name: d.name, avatar: d.avatar, grade: d.grade, theme: d.theme, levels: { ...(d.levels || {}) } };
   applyTheme(sel.theme);
 
   const draw = () => {
@@ -745,9 +946,14 @@ function showEditProfile(existing) {
         <div>
           <span class="lbl">What grade are you in?</span>
           <div class="pick-row">
-            ${[2, 3].map(g => `<button class="pick" data-grade="${g}" aria-pressed="${g === sel.grade}">${g === 2 ? '2nd' : '3rd'} grade</button>`).join('')}
+            ${GRADES.map(g => `<button class="pick" data-grade="${g}" aria-pressed="${g === sel.grade}">${gradeName(g)} grade</button>`).join('')}
           </div>
         </div>
+        <details class="levels" ${Object.keys(sel.levels).length ? 'open' : ''}>
+          <summary>Different level for some subjects? <span class="muted">(grown-ups)</span></summary>
+          <div class="level-grid">${SUBJECT_ORDER.map(sid => `<label>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}
+            <select data-level="${sid}"><option value="">Same as grade</option>${GRADES.map(g => `<option value="${g}" ${sel.levels[sid] === g ? 'selected' : ''}>${gradeName(g)} grade</option>`).join('')}</select></label>`).join('')}</div>
+        </details>
         <div class="row-actions" style="justify-content:flex-start">
           <button class="btn" id="saveP">${existing ? 'Save' : `Let's go! ${th.icon}`}</button>
           ${existing ? '<button class="btn ghost small" id="switch">Switch player</button>' : ''}
@@ -759,13 +965,15 @@ function showEditProfile(existing) {
     bindAll('[data-theme]', el => { sel.theme = el.dataset.theme; applyTheme(sel.theme); draw(); });
     bindAll('[data-av]', el => { sel.avatar = el.dataset.av; draw(); });
     bindAll('[data-grade]', el => { sel.grade = +el.dataset.grade; draw(); });
+    $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; }; });
     document.getElementById('back').onclick = () => existing ? showHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
     document.getElementById('saveP').onclick = () => {
       const name = sel.name.trim();
       if (!name) { toast('Type your name first!'); nm.focus(); return; }
-      if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme });
-      else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); state.profiles.push(p); state.current = p.id; }
+      const levels = Object.fromEntries(Object.entries(sel.levels).filter(([, g]) => g !== sel.grade));
+      if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels });
+      else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; state.profiles.push(p); state.current = p.id; }
       save(); showHome();
     };
   };
@@ -779,13 +987,14 @@ function showHome() {
   const th = theme(p);
   applyTheme(p.theme);
   const subj = SUBJECTS[p.subject] ? p.subject : 'math';
+  const lvl = levelOf(p, subj);
   const missions = subj === 'math'
-    ? MISSIONS.map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: m.grade }))
+    ? (lvl >= 4 ? MISSIONS45 : MISSIONS).map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: Math.min(m.grade, lvl) }))
     : subj === 'typing'
     ? TYPING_LESSONS.map(m => ({ id: m.id, icon: m.icon, name: m.game ? (BLASTER[p.theme] || BLASTER.space).name : m.name, desc: m.desc, grade: 2 }))
-    : SUBJECTS[subj].missions.map(m => ({ id: m.id, icon: m.icon, name: esc(m.name), desc: esc(m.desc), grade: 2 }));
+    : SUBJECTS[subj].missions.filter(m => (!m.grades || m.grades.includes(lvl)) && (!m.questions || m.questions.some(q => q.type !== 'spell' || (window.SPELL_AUDIO && SPELL_AUDIO[q.word])))).map(m => ({ id: m.id, icon: m.icon, name: esc(m.name), desc: esc(m.desc), grade: lvl }));
   // suggest the least-practiced mission for this grade
-  const suggested = missions.filter(m => m.grade <= p.grade).sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
+  const suggested = missions.filter(m => m.grade <= lvl).sort((a, b) => progress(p, a.id) - progress(p, b.id))[0];
   const found = p.found[p.theme] || 0;
   const streakOk = p.lastDay && dayDiff(p.lastDay, today()) <= 1;
 
@@ -841,7 +1050,8 @@ function showHome() {
 
 /* ----- Journal ----- */
 function showJournal(promptIdx) {
-  const p = me(), th = theme(p), prompts = SUBJECTS.writing.journalPrompts;
+  const p = me(), th = theme(p);
+  const prompts = levelOf(p, 'writing') >= 4 && SUBJECTS.writing.journalPrompts45 ? SUBJECTS.writing.journalPrompts45 : SUBJECTS.writing.journalPrompts;
   p.journal = p.journal || [];
   const day = Math.floor(Date.now() / 86400000);
   const idx = promptIdx == null ? (day + p.id.length) % prompts.length : promptIdx % prompts.length;
@@ -900,9 +1110,12 @@ function startMission(missionId) {
   beginMission(missionId);
 }
 
+function subjectOf(missionId) { return BANK[missionId] ? BANK[missionId].subject : TYPE_BY_ID[missionId] ? 'typing' : 'math'; }
 function beginMission(missionId) {
-  const b = BANK[missionId], p = me();
-  game = { missionId, n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false,
+  const b = BANK[missionId], real = me();
+  real.passages = real.passages || {};
+  const p = atLevel(real, subjectOf(missionId));
+  game = { missionId, subject: subjectOf(missionId), n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false,
     queue: b ? buildBankQueue(b.mission, p) : null, qi: 0, len: MISSION_LEN };
   if (b) { game.len = game.queue.length; save(); }
   nextQuestion();
@@ -932,7 +1145,7 @@ function bindSay() {
 }
 
 function nextQuestion() {
-  const p = me();
+  const p = atLevel(me(), game.subject);
   if (game.n >= game.len) return finishMission();
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
@@ -943,6 +1156,7 @@ function nextQuestion() {
     const types = storyTypesFor(game.missionId, p);
     const type = weightedPick(p, types, t => 'wp-' + t);
     const big = game.missionId === 'twodigit' || (game.missionId === 'story' && (p.grade >= 3 || Math.random() < .35));
+    // 4th-5th grade missions mix in their own kind of word problem (the Story mission uses all of them)
     q = makeStory(type, p, big);
   }
   else if (POOLS[game.missionId]) q = factQuestion(chooseFact(p, game.missionId, game.recent));
@@ -976,10 +1190,11 @@ function drawPlay() {
       ${q.spell ? `<div class="row-actions"><button class="btn" id="checkText">Check ✓</button></div>`
       : q.order ? `<div class="row-actions"><button class="btn" id="checkOrder" disabled>Check ✓</button></div>`
       : game.q.choices
-        ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${esc(c.label)}</button>`).join('')}</div>`
+        ? `<div class="choices ${game.q.choices.length === 2 ? 'two' : ''}" id="pad">${game.q.choices.map((c, i) => `<button data-c="${i}">${c.html || esc(c.label)}</button>`).join('')}</div>`
         : `<div class="pad" id="pad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
-        <button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="go" class="go" aria-label="Check answer">✓</button>
+        ${q.decimal ? `<button data-k=".">.</button><button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button><button data-k="go" class="go wide" aria-label="Check answer">✓</button>`
+          : `<button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="go" class="go" aria-label="Check answer">✓</button>`}
       </div>`}
     </div>
   `);
@@ -1015,7 +1230,8 @@ function press(k) {
   if (!game || game.locked) return;
   if (k === 'del') game.input = game.input.slice(0, -1);
   else if (k === 'go') return check();
-  else if (game.input.length < 4) game.input = (game.input === '0' ? '' : game.input) + k;
+  else if (k === '.') { if (game.q.decimal && !game.input.includes('.')) game.input = (game.input || '0') + '.'; }
+  else if (game.input.length < (game.q.decimal ? 7 : 6)) game.input = (game.input === '0' ? '' : game.input) + k;
   const a = document.getElementById('ans'); if (a) a.className = 'answer-box';
   updateAnswer();
 }
@@ -1121,7 +1337,7 @@ function check() {
   if (game.input === '') return;
   const p = me(), th = theme(p);
   const ans = document.getElementById('ans'), fb = document.getElementById('fb'), hint = document.getElementById('hint');
-  const correct = +game.input === game.q.answer;
+  const correct = Math.abs(parseFloat(game.input) - game.q.answer) < 1e-9;
   game.tries++;
   if (correct) { ans.className = 'answer-box good'; return answeredRight(p, th); }
   sfx.bad();
@@ -1149,7 +1365,7 @@ document.addEventListener('keydown', e => {
     else if (e.key === 'Enter') { const n = document.getElementById('next'); if (n) n.click(); }
     return;
   }
-  if (/^[0-9]$/.test(e.key)) press(e.key);
+  if (/^[0-9.]$/.test(e.key)) press(e.key);
   else if (e.key === 'Backspace') press('del');
   else if (e.key === 'Enter') { const n = document.getElementById('next'); n ? n.click() : press('go'); }
 });
@@ -1235,7 +1451,7 @@ const TYPING_LESSONS = [
   { id: 'type-game', icon: '🎮', name: 'Word Blaster', desc: 'Zap the words before they land!', game: true },
 ];
 const TYPE_BY_ID = Object.fromEntries(TYPING_LESSONS.map(l => [l.id, l]));
-const typeTarget = p => p.grade >= 3 ? 12 : 8; // words per minute goal
+const typeTarget = p => ({ 2: 8, 3: 12, 4: 15, 5: 20 })[levelOf(p, 'typing')] || 12; // words per minute goal
 const BLASTER = {
   space: { thing: '☄️', name: 'Asteroid Blaster', boom: '💥' }, ocean: { thing: '🫧', name: 'Bubble Pop', boom: '✨' },
   pets: { thing: '🦴', name: 'Treat Catch', boom: '💖' }, bakery: { thing: '🧁', name: 'Sprinkle Storm', boom: '🍬' },
@@ -1251,7 +1467,7 @@ function typingProgress(p, id) {
 function makeLines(lesson, p) {
   if (lesson.sentences) return shuffle(TYPE_SENTENCES.slice()).slice(0, 5).map(s => plainFill(s, p));
   const ok = w => [...w].every(c => lesson.keys.includes(c));
-  const words = TYPE_WORDS.filter(ok).filter(w => w.length <= (p.grade >= 3 ? 7 : 5));
+  const words = TYPE_WORDS.filter(ok).filter(w => w.length <= ({ 2: 5, 3: 7 })[levelOf(p, 'typing')] || 9);
   const lines = shuffle(lesson.drills.slice()).slice(0, 2);
   while (lines.length < 6) lines.push(Array.from({ length: 5 }, () => pick(words)).join(' '));
   return lines;
@@ -1380,7 +1596,7 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
 /* ----- Word Blaster game ----- */
 function startBlaster() {
   const p = me(), th = theme(p), look = BLASTER[p.theme] || BLASTER.space;
-  const maxLen = p.grade >= 3 ? 7 : 5;
+  const tl = levelOf(p, 'typing'), maxLen = ({ 2: 5, 3: 7 })[tl] || 9;
   const pool = TYPE_WORDS.filter(w => w.length >= 2 && w.length <= maxLen);
   const g = { words: [], target: null, score: 0, combo: 0, lives: 3, zapped: 0, level: 1, t0: performance.now(), last: performance.now(), spawnAt: 0, alive: true };
   render(`
@@ -1439,7 +1655,7 @@ function startBlaster() {
   const tick = now => {
     if (!g.alive || !document.body.contains(field)) return;
     const dt = Math.min(.05, (now - g.last) / 1000); g.last = now;
-    const speed = 22 + g.level * 7 + (p.grade >= 3 ? 6 : 0);           // pixels per second
+    const speed = 22 + g.level * 7 + (tl - 2) * 6;                       // pixels per second
     const every = Math.max(900, 2600 - g.level * 220);                  // ms between words
     if (now > g.spawnAt) { spawn(); g.spawnAt = now + every; }
     const floor = field.clientHeight - 50;
@@ -1508,7 +1724,14 @@ function labelKey(k) {
     'wp-join': 'Story: adding on', 'wp-separate': 'Story: taking away', 'wp-compare': 'Story: how many more',
     'wp-missing': 'Story: missing part', 'wp-money': 'Story: money', 'wp-pvbundle': 'Story: hundreds/tens/ones',
     'wp-groups': 'Story: equal groups', 'wp-share': 'Story: sharing equally', 'wp-buy': 'Story: how many can you buy',
-    'wp-twostep': 'Story: two steps' };
+    'wp-twostep': 'Story: two steps', 'wp-times': 'Story: times as many',
+    'mul-2x1': '2-digit × 1-digit', 'mul-3x1': '3-digit × 1-digit', 'mul-4x1': '4-digit × 1-digit', 'mul-2x2': '2-digit × 2-digit', 'mul-3x2': '3-digit × 2-digit',
+    'div-exact': 'Long division', 'div-rem': 'Division with remainders', 'div-2digit': 'Dividing by 2-digit numbers',
+    'frac-equiv': 'Equivalent fractions', 'frac-compare': 'Comparing fractions', 'frac-addSame': 'Adding fractions', 'frac-subSame': 'Subtracting fractions',
+    'frac-mixed': 'Mixed numbers', 'frac-addUnlike': 'Adding unlike fractions', 'frac-mulWhole': 'Whole × fraction', 'frac-mulFrac': 'Fraction × fraction', 'frac-simplify': 'Simplifying fractions',
+    'dec-toDec': 'Fractions as decimals', 'dec-fracToDec': 'Fractions as decimals', 'dec-compareDec': 'Comparing decimals', 'dec-addDec': 'Adding decimals',
+    'dec-subDec': 'Subtracting decimals', 'dec-times10': '× 10, 100, 1000', 'dec-roundDec': 'Rounding decimals',
+    'meas-area': 'Area', 'meas-perimeter': 'Perimeter', 'meas-side': 'Missing side', 'meas-volume': 'Volume' };
   if (k.startsWith('q:')) {
     const hit = QINDEX[k.slice(2)];
     if (!hit) return k;
@@ -1536,14 +1759,14 @@ function showParents() {
           const last = runs.slice(-3), avg = k => last.length ? Math.round(last.reduce((a, r) => a + r[k], 0) / last.length) : 0;
           return `<tr><td>${esc(l.name)}</td><td>${runs.length}</td><td>${runs.length ? `${avg('wpm')} WPM · ${avg('acc')}% accurate` : '—'}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
         }).join('') :
-        (sid === 'math' ? MISSIONS : SUBJECTS[sid].missions).map(m => {
+        (sid === 'math' ? (levelOf(p, 'math') >= 4 ? MISSIONS45 : MISSIONS) : SUBJECTS[sid].missions.filter(m => !m.grades || m.grades.includes(levelOf(p, sid)))).map(m => {
         const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
         const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
         const mm = p.missions[m.id] || { plays: 0 };
         return `<tr><td>${esc(sid === 'math' ? m.desc : m.name)}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
       }).join(''))).join('');
       return `<div class="card stack">
-        <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${p.grade === 2 ? '2nd' : '3rd'} grade · ${THEMES[p.theme].name}</span></h2>
+        <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${gradeName(p.grade)} grade${Object.keys(p.levels || {}).length ? ' (' + Object.entries(p.levels).map(([s, g]) => `${SUBJECTS[s] ? SUBJECTS[s].name : s} ${gradeName(g)}`).join(', ') + ')' : ''} · ${THEMES[p.theme].name}</span></h2>
         <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'}</p>
         <div style="overflow-x:auto"><table><tr><th>Skill</th><th>Missions</th><th>First-try accuracy</th><th>Mastered</th></tr>${rows}</table></div>
         <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
@@ -1571,6 +1794,11 @@ function showParents() {
 }
 function missionOf(k) {
   if (k.startsWith('q:')) return (QINDEX[k.slice(2)] || {}).mid;
+  if (k.startsWith('mul-')) return 'multi';
+  if (k.startsWith('div-')) return 'longdiv';
+  if (k.startsWith('frac-')) return 'fractions';
+  if (k.startsWith('dec-')) return 'decimals';
+  if (k.startsWith('meas-')) return 'measure';
   if (k.startsWith('wp-')) return 'story';
   if (k.startsWith('mc-')) return 'choice';
   if (k.startsWith('pv-')) return 'place';
