@@ -40,6 +40,9 @@ body {
   transition: background .4s;
 }
 button { font-family: inherit; color: inherit; cursor: pointer; }
+/* iPad/iPhone: no double-tap zoom, no long-press text selection on game controls */
+html { touch-action: manipulation; }
+button { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 #sky { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
 #sky span {
