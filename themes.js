@@ -6,7 +6,7 @@ window.THEMES = {
     title: 'Mission Control', playerWord: 'Explorer',
     meter: 'Fuel', meterIcon: '⛽', point: 'stars', pointIcon: '⭐',
     collection: 'Alien Logbook', collectVerb: 'You discovered a new alien!',
-    avatars: ['🚀', '🛸', '👩‍🚀', '🧑‍🚀', '🌙', '🪐'],
+    avatars: ['🚀', '🛸', '👩‍🚀', '👾', '🌙', '🪐'],
     missions: {
       addsub:   { name: 'Comet Count',  icon: '☄️' },
       place:    { name: 'Block Moon',   icon: '🌕' },
@@ -36,7 +36,7 @@ window.THEMES = {
     title: 'Dive Station', playerWord: 'Diver',
     meter: 'Air', meterIcon: '🫧', point: 'pearls', pointIcon: '🦪',
     collection: 'My Aquarium', collectVerb: 'A new friend joined your aquarium!',
-    avatars: ['🤿', '🧜‍♀️', '🧜', '🐬', '🐳', '🚤'],
+    avatars: ['🤿', '🧜‍♀️', '🐙', '🐬', '🐳', '🚤'],
     missions: {
       addsub:   { name: 'Coral Reef',     icon: '🪸' },
       place:    { name: 'Treasure Wreck', icon: '⚓' },
@@ -62,7 +62,7 @@ window.THEMES = {
     ],
   },
   pets: {
-    name: 'Pet Rescue', icon: '🐾', bgItems: ['🐾', '·', '♥', '·'],
+    name: 'Pet Rescue', icon: '🐶', bgItems: ['🐾', '·', '♥', '·'],
     title: 'Rescue Center', playerWord: 'Rescuer',
     meter: 'Treats', meterIcon: '🦴', point: 'hearts', pointIcon: '💖',
     collection: 'My Pets', collectVerb: 'You rescued a new pet!',

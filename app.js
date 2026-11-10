@@ -67,7 +67,10 @@ function applyTheme(id) {
     html += `<span style="left:${rand(0, 100)}%;top:${rand(0, 100)}%;font-size:${size}px;--d:${rand(3, 12)}s;--delay:-${rand(0, 12)}s">${pick(items)}</span>`;
   }
   sky.innerHTML = html;
-  document.querySelector('meta[name=theme-color]').setAttribute('content', getComputedStyle(document.body).getPropertyValue('--bg1').trim() || '#0b1033');
+  const cs = getComputedStyle(document.body);
+  document.querySelector('meta[name=theme-color]').setAttribute('content', cs.getPropertyValue('--bg1').trim() || '#0b1033');
+  // fill the area behind the iPad home bar / overscroll with the theme color
+  document.documentElement.style.background = cs.getPropertyValue('--bg2').trim() || '#0b1033';
 }
 
 /* ---------- sound ---------- */
@@ -554,7 +557,7 @@ function showProfiles() {
   applyTheme('space');
   render(`
     <div class="hero stack">
-      <div class="big">🚀🐠🐾🧁</div>
+      <div class="big">🚀🐠🐶🧁</div>
       <h1>Math Quest</h1>
       <p class="muted" style="font-size:1.2rem">Who's playing today?</p>
     </div>
@@ -564,7 +567,7 @@ function showProfiles() {
           <span class="av">${p.avatar}</span>${esc(p.name)}
           <small>${THEMES[p.theme].icon} ${THEMES[p.theme].name}</small>
         </button>`).join('')}
-      <button class="profile add" id="add"><span class="av">➕</span>New player</button>
+      <button class="profile add" id="add"><span class="av plus">+</span>New player</button>
     </div>
     <div class="row-actions" style="margin-top:28px">
       <button class="btn ghost small" id="parents">👪 Grown-ups</button>
@@ -590,7 +593,7 @@ function showEditProfile(existing) {
         <h2>${existing ? 'Change my settings' : 'New player'}</h2>
         <div>
           <label class="lbl" for="nm">Your name</label>
-          <input class="text" id="nm" maxlength="14" autocomplete="off" value="${esc(sel.name)}" placeholder="Type your name">
+          <input class="text" id="nm" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" value="${esc(sel.name)}" placeholder="Type your name">
           <p class="muted" style="margin:6px 0 0;font-size:.95rem">Saved only on this device.</p>
         </div>
         <div>

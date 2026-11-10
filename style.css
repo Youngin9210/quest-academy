@@ -99,6 +99,7 @@ h2 { font-size: clamp(1.4rem, 4vw, 1.9rem); font-weight: 600; }
 .profile .av { font-size: 3.4rem; display: block; margin-bottom: 6px; }
 .profile small { display: block; color: var(--muted); font-weight: 500; font-size: .95rem; margin-top: 4px; }
 .profile.add { border-style: dashed; }
+.profile .av.plus { font-weight: 700; color: var(--accent); line-height: 1; }
 
 .pick-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .pick {

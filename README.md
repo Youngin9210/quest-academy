@@ -13,7 +13,7 @@ A math practice game for 2nd and 3rd graders. Play it at **https://youngin9210.g
 - **Grown-ups page:** hold the button for 3 seconds on the start screen to see accuracy, mastery, "needs practice" facts, and the most common mistakes per player.
 
 ## Playing on an iPad
-Open the site in Safari, tap **Share → Add to Home Screen**, and always play from that icon. It opens full-screen like an app. Safari can erase a website's saved progress after 7 days without a visit, but home screen apps are exempt. Progress in the home screen app and in a Safari tab are kept separately.
+Open the site in Safari, tap **Share**, then **Add to Home Screen** (on newer iPads it's under **More**), and always play from that icon. It opens full-screen like an app. Safari can erase a website's saved progress after 7 days without a visit, but home screen apps are exempt. Progress in the home screen app and in a Safari tab are kept separately.
 
 ## Privacy
 There are no accounts and no server. Names and progress are saved only in the browser on the device being used (`localStorage`). Each device keeps its own progress.
