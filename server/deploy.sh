@@ -6,6 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source server/deploy.env
 KEY="${SG_KEY:-$HOME/.ssh/siteground_quest}"
+if [ "$(git rev-parse --abbrev-ref HEAD)" != "main" ] && [ "${ALLOW_BRANCH:-}" != "1" ]; then
+  echo "Deploys go out from main only (you're on $(git rev-parse --abbrev-ref HEAD))."; exit 1
+fi
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 git archive HEAD | tar -x -C "$OUT"
 chmod 755 "$OUT"                     # mktemp makes a private folder; the site root must stay public
