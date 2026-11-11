@@ -1,3 +1,5 @@
 .claude/
 .DS_Store
 server/deploy.env
+app/node_modules/
+app/dist/
