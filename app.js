@@ -900,6 +900,7 @@ function showProfiles() {
       <h1>Quest Academy</h1>
       <p class="muted" style="font-size:1.2rem">Who's playing today?</p>
     </div>
+    ${state.profiles.length ? '' : setupCardHtml()}
     <div class="profile-grid" style="margin-top:20px">
       ${state.profiles.map(p => `
         <button class="profile" data-id="${p.id}">
@@ -908,6 +909,7 @@ function showProfiles() {
         </button>`).join('')}
       <button class="profile add" id="add"><span class="av plus">+</span>New player</button>
     </div>
+    ${state.profiles.length ? setupCardHtml() : ''}
     <div class="row-actions" style="margin-top:28px">
       <button class="btn ghost small" id="parents">👪 Grown-ups</button>
     </div>
@@ -916,10 +918,77 @@ function showProfiles() {
   bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
   document.getElementById('add').onclick = () => showEditProfile();
   document.getElementById('parents').onclick = () => showParentGate();
+  bindSetupCard();
 }
 
+/* ----- Grown-ups: getting started ----- */
+const isTouchDevice = () => navigator.maxTouchPoints > 1;
+const isHomeScreenApp = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+function setupSteps() {
+  const locked = !!(state.grownPin || state.sync.token);
+  const steps = [
+    { id: 'lock', done: locked, title: 'Lock the grown-ups page',
+      text: SYNC_URL ? 'Sign in to your family account, or make a PIN for this device. Kids then can\'t change grades or see the grown-ups page.'
+        : 'Make a PIN for this device. Kids then can\'t change grades or see the grown-ups page.',
+      action: locked ? '' : 'Set up the lock' },
+    { id: 'players', done: state.profiles.length > 0, title: 'Add a player for each child',
+      text: 'Tap "New player": each child picks a name, a world and her grade.', action: state.profiles.length ? '' : 'Add a player' },
+    { id: 'levels', done: !!state.setupSeen, title: 'Check grades and levels (optional)',
+      text: 'On the Grown-ups page, open a player\'s settings to set a different level for one subject, like 3rd grade but 4th grade math. Progress for each child shows there too.',
+      action: state.setupSeen ? '' : 'Open Grown-ups' },
+  ];
+  if (isTouchDevice()) steps.push({ id: 'home', done: isHomeScreenApp(), title: 'On an iPad: add it to the Home Screen',
+    text: 'In Safari tap Share, then "Add to Home Screen", and always play from that icon. It runs full screen, works offline, and keeps progress safe.', action: '' });
+  if (SYNC_URL) steps.push({ id: 'sync', done: !!state.sync.token, title: 'Using more than one device? (optional)',
+    text: 'Sign in to the same family account on each device and progress follows the kids everywhere.', action: state.sync.token ? '' : 'Sign in' });
+  return steps;
+}
+function setupCardHtml() {
+  if (state.setupHidden) return '';
+  const steps = setupSteps();
+  // the main setup is done: the kids' screen goes back to being theirs (the guide stays on the Grown-ups page)
+  if (['lock', 'players', 'levels'].every(id => steps.find(st => st.id === id).done)) return '';
+  const next = steps.find(st => !st.done && st.action);
+  return `<section class="card setup" aria-labelledby="setupTitle">
+    <div class="setup-head"><h2 id="setupTitle">👋 Grown-ups: getting started</h2>
+      <button class="btn ghost small" id="setupHide">Hide</button></div>
+    <p class="muted">A few minutes of setup, then the kids can play on their own.</p>
+    <ol class="setup-steps">${steps.map((st, i) => `<li class="${st.done ? 'done' : ''}">
+      <span class="setup-mark" aria-hidden="true">${st.done ? '✓' : i + 1}</span>
+      <div><b>${st.title}</b>${st.done ? ' <span class="sr-only">(done)</span>' : ''}<p>${st.text}</p>
+      ${st.action ? `<button class="btn small ${st === next ? '' : 'ghost'}" data-setup="${st.id}">${st.action}</button>` : ''}</div></li>`).join('')}</ol>
+    <p class="muted setup-foot">You can find this again under 👪 Grown-ups → How it works.</p>
+  </section>`;
+}
+function bindSetupCard() {
+  const hide = document.getElementById('setupHide');
+  if (hide) hide.onclick = () => { state.setupHidden = true; writeStore(); showProfiles(); };
+  bindAll('[data-setup]', el => ({
+    lock: () => showParentGate(showProfiles, showProfiles),
+    players: () => showEditProfile(),
+    levels: () => showParentGate(showParents, showProfiles),
+    sync: () => showGateSignIn(showProfiles, showProfiles),
+  })[el.dataset.setup]());
+}
+function howItWorksHtml() {
+  return `<details class="card how" ${state.setupSeen ? '' : 'open'}><summary><b>📖 How it works</b></summary>
+    <ul>
+      <li><b>One player per child.</b> Each picks a world (just the look) and her grade. Change a grade or set a different level per subject from a player's settings (⚙️) while this page is unlocked.</li>
+      <li><b>Start each day with Today's Quest.</b> 10 questions from every subject, mixing in things she missed. It keeps a daily streak.</li>
+      <li><b>Or pick a subject and a mission</b> that matches this week's homework. "Try me!" marks the one she's practiced least.</li>
+      <li><b>Missed questions come back</b> a few questions later and keep showing up until they stick. Hints help first; the answer shows after a second miss.</li>
+      <li><b>Below, for each child:</b> accuracy and mastery per mission, "Needs practice" items, common math mistakes, typing keys, and her journal.</li>
+      <li><b>Typing</b> works best with a real keyboard. <b>Spelling</b> plays real people saying each word.</li>
+      ${SYNC_URL ? '<li><b>More than one device?</b> Sign in to your family account on each one (below). Progress syncs, and each device keeps working offline.</li>' : ''}
+      <li><b>On an iPad,</b> add the app to the Home Screen (Share → Add to Home Screen) and always play from that icon.</li>
+    </ul>
+    ${state.setupHidden ? '<button class="btn ghost small" id="showSetup">Show the getting-started list again</button>' : ''}
+  </details>`;
+}
+
+
 /* ----- Create / edit player ----- */
-function showEditProfile(existing) {
+function showEditProfile(existing, after) {
   const d = existing || { name: '', avatar: null, grade: 2, theme: 'space' };
   let sel = { name: d.name, avatar: d.avatar, grade: d.grade, theme: d.theme, levels: { ...(d.levels || {}) } };
   applyTheme(sel.theme);
@@ -979,7 +1048,7 @@ function showEditProfile(existing) {
     const ug = document.getElementById('unlockGrade');
     if (ug) ug.onclick = () => { sel.name = nm.value; showParentGate(() => { applyTheme(sel.theme); draw(); }, () => { applyTheme(sel.theme); draw(); }); };
     $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; }; });
-    document.getElementById('back').onclick = () => existing ? showHome() : showProfiles();
+    document.getElementById('back').onclick = () => after ? after() : existing ? showHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
     const dp = document.getElementById('delP');
     if (dp) dp.onclick = () => {
@@ -994,7 +1063,7 @@ function showEditProfile(existing) {
       const levels = Object.fromEntries(Object.entries(sel.levels).filter(([, g]) => g !== sel.grade));
       if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels });
       else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; state.profiles.push(p); state.current = p.id; }
-      save(); showHome();
+      save(); after ? after() : showHome();
     };
   };
   draw();
@@ -1030,11 +1099,11 @@ function showHome() {
     <div class="stack">
       <div>
         <h1>${th.title}</h1>
-        <p class="muted" style="font-size:1.15rem;margin:6px 0 0">Pick a subject and a mission, ${th.playerWord.toLowerCase()}!</p>
+        <p class="muted home-sub">${questDoneToday(p) ? `Nice work today, ${esc(p.name)}! Pick any mission to keep going.` : `Hi ${esc(p.name)}! Start with today's quest, or pick any mission.`}</p>
       </div>
       ${questCardHtml(p)}
-      <div class="subject-tabs" role="tablist">
-        ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}">${SUBJECTS[s].icon} ${SUBJECTS[s].name}</button>`).join('')}
+      <div class="subject-tabs" role="tablist" aria-label="Subjects">
+        ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}"><span class="ti" aria-hidden="true">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></button>`).join('')}
       </div>
       <div class="mission-grid">
         ${missions.map(m => {
@@ -1060,11 +1129,16 @@ function showHome() {
             <span class="desc">Write about anything you like</span>
             <span class="mastery-label">${(p.journal || []).length} entries</span></button>` : ''}
       </div>
-      <button class="card" id="coll" style="width:100%;text-align:left;display:flex;align-items:center;gap:14px">
-        <span style="font-size:2.6rem">${found ? th.collectibles[found - 1][0] : '❔'}</span>
-        <span><b style="font-size:1.3rem">${th.collection}</b><br>
-        <span class="muted">${found} of ${th.collectibles.length} found. Finish missions to find more!</span></span>
+      <button class="card coll-card" id="coll">
+        <span class="coll-head"><b>${th.collection}</b><span class="muted">${found} of ${th.collectibles.length} found</span></span>
+        <span class="coll-row" aria-hidden="true">${th.collectibles.slice(Math.max(0, found - 7), found).map(c => `<span>${c[0]}</span>`).join('')}${found < th.collectibles.length ? '<span class="next">❔</span>' : ''}</span>
+        <span class="mastery"><i style="width:${Math.round(found / th.collectibles.length * 100)}%"></i></span>
+        <span class="muted coll-hint">${found < th.collectibles.length ? 'Every finished mission finds a new one.' : 'You found them all!'}</span>
       </button>
+      <div class="home-foot">
+        <button class="btn ghost small" id="switchP">🔄 Switch player</button>
+        <button class="btn ghost small" id="grown">👪 Grown-ups</button>
+      </div>
     </div>
   `);
   bindAll('[data-m]', el => startMission(el.dataset.m));
@@ -1074,6 +1148,8 @@ function showHome() {
   const hs = document.getElementById('scores'); if (hs) hs.onclick = showHighScores;
   document.getElementById('me').onclick = () => showEditProfile(p);
   document.getElementById('coll').onclick = showCollection;
+  document.getElementById('switchP').onclick = showProfiles;
+  document.getElementById('grown').onclick = () => showParentGate(showParents, showHome);
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showHome(); };
 }
 
@@ -2069,8 +2145,9 @@ function showParents() {
   applyTheme('space');
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
-    <h1>Progress</h1>
+    <h1>Grown-ups</h1>
     <p class="muted">${SYNC_URL && state.sync.token ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
+    ${howItWorksHtml()}
     ${syncCardHtml()}
     ${state.profiles.length ? '' : '<p>No players yet.</p>'}
     <div class="stack">
@@ -2099,13 +2176,17 @@ function showParents() {
           Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
         <div><b>Journal</b> <span class="muted">(${(p.journal || []).length} entries)</span>${(p.journal || []).slice(0, 5).map(e =>
           `<div class="journal-entry" style="margin-top:10px"><div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('') || '<div class="muted">Nothing written yet.</div>'}</div>
-        <div><button class="btn ghost small danger" data-del="${p.id}">Delete player</button></div>
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn ghost small" data-edit="${p.id}">⚙️ Grade, levels & settings</button><button class="btn ghost small danger" data-del="${p.id}">Delete player</button></div>
       </div>`;
     }).join('')}
     </div>
   `);
   document.getElementById('back').onclick = showProfiles;
   bindSyncCard(showParents);
+  const ss = document.getElementById('showSetup');
+  if (ss) ss.onclick = () => { state.setupHidden = false; writeStore(); showProfiles(); };
+  bindAll('[data-edit]', el => { state.current = el.dataset.edit; writeStore(); showEditProfile(me(), showParents); });
+  if (!state.setupSeen) { state.setupSeen = true; writeStore(); }
   bindAll('[data-del]', el => {
     const p = state.profiles.find(x => x.id === el.dataset.del);
     if (p && deletePlayer(p)) showParents();

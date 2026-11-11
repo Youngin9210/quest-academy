@@ -111,7 +111,7 @@ It is friendly without being babyish. The older sister should feel this is a rea
 Each world is a dark or light gradient sky, one ink, one muted ink, a warm primary accent and a cool secondary accent, plus shared good/bad feedback colors.
 
 ### Primary
-- **Space Gold** (space-gold), **Ocean Sun** (ocean-sun), **Pet Coral** (pets-coral), **Bakery Frosting** (bakery-frosting): the `--accent` of each world. Primary buttons, the selected subject tab, the "Try me!" tag, the answer box underline, the current typing letter, the toast. Text on it uses `--accent-ink`.
+- **Space Gold** (space-gold), **Ocean Sun** (ocean-sun), **Pet Coral** (pets-coral), **Bakery Frosting** (bakery-frosting): the `--accent` of each world. Primary buttons, the selected subject tab's border, the "Try me!" tag's outline, the answer box underline, the current typing letter, the toast. Text on it uses `--accent-ink`.
 
 ### Secondary
 - **Space Cyan**, **Ocean Seafoam**, **Pet Teal**, **Bakery Grape**: the `--accent2`. Progress-bar gradient end, second dot color in math visuals, area rectangles.
@@ -183,11 +183,13 @@ Generously rounded everywhere: pills (999px) for buttons, tabs and chips; 22px f
 - 16px radius, 2px card border, translucent fill, 1.4rem text. Spelling input is centered, 2rem, and turns good/bad colored after checking.
 
 ### Navigation
-- **Subject tabs:** a horizontal row of pills; the selected tab fills with the accent. Scrolls sideways on small screens.
+- **Subject tabs:** one row. On phones, pills (icon + label) that scroll sideways with a fade at the right edge; from 700px up, six equal tiles with the icon above the label. The selected tab gets an accent border and a light accent tint, not a full accent fill, so the Daily Quest "Go" stays the one accent button.
+- **Home footer:** "Switch player" and "Grown-ups" ghost buttons at the bottom of every player's home, so a grown-up can always reach the locked page.
+- **Getting-started checklist:** on the "Who's playing" screen until the lock, a player and a first Grown-ups visit are done; only the next step's button is accent-filled. The same guidance lives under Grown-ups → How it works.
 - **Top bar:** player button (avatar, name, gear) on the left; points, streak and sound chips on the right.
 
 ### Mission tile (signature)
-- Card-styled button: big emoji icon, mission name (700), one-line description (muted), mastery label and a slim good-colored progress bar pinned to the bottom. The least-practiced mission gets an accent "Try me!" tag.
+- Card-styled button: big emoji icon, mission name (700), one-line description (muted), mastery label and a slim good-colored progress bar pinned to the bottom. The least-practiced mission gets an outlined "Try me!" tag (accent border, accent-text label).
 
 ### Number pad and answer choices (signature)
 - 3-column pad of big numeral keys with a soft press edge; the Go key is the only accent-filled key. Multiple choice is a 2-up grid of large tiles that turn good-colored when right and fade with a strike-through when wrong.
