@@ -99,7 +99,7 @@ h2 { font-size: clamp(1.4rem, 4vw, 1.9rem); font-weight: 600; }
 .btn.danger { color: var(--bad-ink); border-color: color-mix(in srgb, var(--bad-ink) 45%, transparent); }
 .btn:disabled { opacity: .45; }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip { background: var(--card); border: 2px solid var(--card-border); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 1.05rem; white-space: nowrap; }
 button.chip { min-height: 44px; min-width: 52px; }
@@ -138,7 +138,7 @@ label.lbl { display: block; font-weight: 600; margin-bottom: 8px; font-size: 1.1
 .mission-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .mission {
   position: relative; border: 2px solid var(--card-border); background: var(--card);
-  border-radius: var(--radius); padding: 18px; text-align: left;
+  border-radius: var(--radius); padding: 20px; text-align: left;
   display: flex; flex-direction: column; gap: 6px; min-height: 170px;
 }
 .mission .icon { font-size: 2.3rem; line-height: 1; }
@@ -281,7 +281,8 @@ th { color: var(--muted); font-weight: 600; }
 /* ---------- Subjects ---------- */
 /* one row: scrolls sideways on phones (edge fades to show there's more), evenly split on tablets and up */
 .subject-tabs {
-  display: flex; gap: 8px; padding: 3px; margin: 0 -3px;
+  /* 3px of room so focus rings aren't clipped by the scroller; margins cancel it so the row keeps the 16px rhythm */
+  display: flex; gap: 8px; padding: 3px; margin: 13px -3px -3px;
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   mask-image: linear-gradient(90deg, #000 85%, transparent);
   -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
@@ -294,7 +295,7 @@ th { color: var(--muted); font-weight: 600; }
 }
 .subject-tab .ti { font-size: 1.3rem; line-height: 1; }
 @media (min-width: 700px) {
-  .subject-tabs { display: grid; grid-template-columns: repeat(6, 1fr); overflow: visible; mask-image: none; -webkit-mask-image: none; }
+  .subject-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; padding: 0; margin: 16px 0 0; overflow: visible; mask-image: none; -webkit-mask-image: none; }
   .subject-tab { flex-direction: column; justify-content: center; gap: 4px; border-radius: 16px; padding: 10px 6px; font-size: 1.05rem; white-space: normal; text-align: center; line-height: 1.15; min-height: 84px; }
   .subject-tab .ti { font-size: 1.7rem; }
 }
@@ -462,7 +463,7 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 .coll-row { display: flex; gap: 6px; font-size: 2.1rem; line-height: 1; flex-wrap: wrap; }
 .coll-row .next { opacity: .75; }
 .coll-hint { font-size: 1rem; }
-.home-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 8px; }
+.home-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 
 /* ---------- Grown-ups: getting started + how it works ---------- */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
