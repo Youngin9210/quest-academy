@@ -1,0 +1,13 @@
+# The app's own files change with every update: browsers must check for a newer copy each time
+# (a cheap "not modified" reply when nothing changed). Recordings and icons can stay cached.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css|webmanifest)$">
+    Header set Cache-Control "no-cache"
+    Header unset Expires
+  </FilesMatch>
+</IfModule>
+<IfModule mod_expires.c>
+  <FilesMatch "\.(html|js|css|webmanifest)$">
+    ExpiresActive Off
+  </FilesMatch>
+</IfModule>
