@@ -25,7 +25,7 @@ export function App() {
   const view = (() => {
     if (screen.name === 'profiles' || !player) return <Profiles onPick={pick} onNewPlayer={notYet} onGrownUps={notYet} />;
     switch (screen.name) {
-      case 'home': return <Home player={player} onCollection={() => setScreen({ name: 'collection' })} onSwitchPlayer={switchPlayer} />;
+      case 'home': return <Home player={player} onCollection={() => setScreen({ name: 'collection' })} onSwitchPlayer={switchPlayer} onNotYet={notYet} />;
       case 'collection': return <Collection player={player} onBack={() => setScreen({ name: 'home' })} />;
     }
   })();

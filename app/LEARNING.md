@@ -76,11 +76,33 @@ When you're done, tell me and I'll review it. Then we move on.
 
 ---
 
+## Lesson 2: the home screen ← pick up here
+
+The home screen now has Today's Quest, the subject tabs and the mission cards. Buttons for screens that aren't ported yet show a "not built yet" message.
+
+### Read these, in order
+
+1. `src/game/missions.ts` and `src/game/progress.ts`: game logic moved out of the old `app.js` into plain TypeScript, **with no React in it**. Components call these functions; they never draw anything. Keeping logic separate from screens is the most useful React habit there is.
+2. `src/components/SubjectTabs.tsx`: a **controlled component**. It doesn't remember which tab is selected; the parent passes `selected` in and gets told about taps through `onSelect`.
+3. `src/components/MissionCard.tsx`: a small reusable piece with an **optional prop** (`tryMe?`) and **conditional drawing** (`{tryMe && <span>...}`).
+4. `src/screens/Home.tsx`: puts them together. Look at:
+   - **derived data:** `missions` is computed on every draw, never stored;
+   - **saving a choice:** `selectSubject` changes the player inside `updateState`, never the `player` prop directly.
+
+### ✏️ Your exercise: the "Try me!" tag
+
+In `Home.tsx`, find `const suggestedId: string | null = null;`. Replace `null` with the id of the mission in `missions` that has the **lowest** `progress(player, m.id)`. You'll need to import `progress` from `../game/progress`.
+
+Ava has no progress yet, so every mission is at 0 and the first one should get the tag. To check it's really picking the lowest, play a few rounds of a mission in the old app on 5173, or paste test stats into the console.
+
+**Hint:** one way is to sort a copy of the list by progress and take the first. Another is `.reduce()` to keep the lowest. Either is fine.
+
+---
+
 ## Coming next
 
-1. **Lesson 2: the home screen.** Subject tabs (state inside a component), the mission list, and "derived data": values computed from state, not stored.
-2. **Lesson 3: playing a mission.** The game logic moves into plain TypeScript modules with no React in them, and the screen uses `useReducer` for the question flow.
-3. **Lesson 4: forms.** New player and settings: controlled inputs and validation.
-4. **Lesson 5: the grown-ups lock and sync.** Async code (`fetch`) in effects, loading and error states.
-5. **Lesson 6: typing and Word Blaster.** Keyboard events and animation with `requestAnimationFrame` and refs.
-6. **Lesson 7: shipping it.** The build step, the offline service worker, deploy, and the switch-over.
+1. **Lesson 3: playing a mission.** The game logic moves into plain TypeScript modules with no React in them, and the screen uses `useReducer` for the question flow.
+2. **Lesson 4: forms.** New player and settings: controlled inputs and validation.
+3. **Lesson 5: the grown-ups lock and sync.** Async code (`fetch`) in effects, loading and error states.
+4. **Lesson 6: typing and Word Blaster.** Keyboard events and animation with `requestAnimationFrame` and refs.
+5. **Lesson 7: shipping it.** The build step, the offline service worker, deploy, and the switch-over.

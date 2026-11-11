@@ -12,15 +12,18 @@ import '../../subjects/writing-45.js';
 import '../../subjects/science-45.js';
 import '../../subjects/social-45.js';
 import '../../audio/spell-audio.js';
-import type { Theme, ThemeId } from './types';
+import type { Subject, Theme, ThemeId } from './types';
 
 const w = window as unknown as {
   THEMES: Record<ThemeId, Theme>;
-  SUBJECTS: Record<string, unknown>;
+  SUBJECTS: Record<string, Subject>;
   SPELL_AUDIO: Record<string, true>;
 };
 
 export const THEMES = w.THEMES;
 export const SUBJECTS = w.SUBJECTS;
+// Math and typing are built into the app (generated questions), not question banks
+SUBJECTS.math = { name: 'Math', icon: '🔢', builtIn: true };
+SUBJECTS.typing = { name: 'Typing', icon: '⌨️', builtIn: true };
 export const SPELL_AUDIO = w.SPELL_AUDIO;
 export const themeOf = (id: string | undefined): Theme => THEMES[id as ThemeId] ?? THEMES.space;
