@@ -9,6 +9,9 @@ KEY="${SG_KEY:-$HOME/.ssh/siteground_quest}"
 OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 git archive HEAD | tar -x -C "$OUT"
 chmod 755 "$OUT"                     # mktemp makes a private folder; the site root must stay public
+# The host caches .js/.css for a year, so give them a new address on every deploy (index.html itself is never cached)
+VER="$(git rev-parse --short HEAD)"
+sed -i.bak -E "s#(src|href)=\"([^\":]+\.(js|css|webmanifest))\"#\1=\"\2?v=$VER\"#g" "$OUT/index.html" && rm -f "$OUT/index.html.bak"
 rsync -az --delete -e "ssh -i $KEY -p $SG_PORT -o StrictHostKeyChecking=accept-new" \
   --exclude '.git*' --exclude '.claude' --exclude '.impeccable' --exclude 'server' --exclude 'README.md' --exclude 'DESIGN.md' --exclude 'PRODUCT.md' --exclude '.DS_Store' --exclude '.nojekyll' \
   "$OUT/" "$SG_USER@$SG_HOST:$SG_PATH/"
