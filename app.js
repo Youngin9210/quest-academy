@@ -608,10 +608,31 @@ function buildBankQueue(m, p) {
     two.forEach(x => { seen[x.id] = (seen[x.id] || 0) + 1; });
     return two.flatMap(x => x.questions.map(q => ({ q, passage: x })));
   }
-  const pool = bankItems(m, p).slice(), out = [];
-  while (out.length < MISSION_LEN && pool.length) {
-    const q = weightedPick(p, pool, x => 'q:' + x.id);
-    out.push({ q }); pool.splice(pool.indexOf(q), 1);
+  // new and still-learning questions first; mastered ones only come back for a short review,
+  // so a mission gets shorter rather than repeating what she already knows
+  const all = bankItems(m, p);
+  const learning = all.filter(q => !bankMastered(p, q)), mastered = all.filter(q => bankMastered(p, q));
+  const out = pickBank(p, learning, MISSION_LEN);
+  const review = learning.length ? Math.min(MASTERED_REVIEW, MISSION_LEN - out.length) : MISSION_LEN;
+  return shuffle([...out, ...shuffle(mastered.slice()).slice(0, review)]).map(q => ({ q }));
+}
+// mastered = right on the first try twice in a row (same as bankProgress)
+const MASTERED_REVIEW = 2;
+const bankMastered = (p, q) => ((p.stats['q:' + q.id] || {}).box || 0) >= 2;
+// never seen > missed > right once
+function bankWeight(p, q) {
+  const s = p.stats['q:' + q.id];
+  if (!s) return 6;
+  if (s.box === 0) return s.w > s.r ? 8 : 5;
+  return bankMastered(p, q) ? 0.5 : 2;
+}
+function pickBank(p, items, n) {
+  const pool = items.slice(), out = [];
+  while (out.length < n && pool.length) {
+    const w = pool.map(q => bankWeight(p, q));
+    let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0;
+    while (i < pool.length - 1 && (r -= w[i]) > 0) i++;
+    out.push(pool.splice(i, 1)[0]);
   }
   return out;
 }
@@ -893,7 +914,9 @@ const showPct = x => x > 0 && x < .01 ? 1 : Math.round(x * 100);
    Screens
    ========================================================= */
 
-function render(html) {
+// name: 'home' or 'profiles' marks the screens a sync may redraw; every other screen clears it
+function render(html, name = '') {
+  screen = name;
   const hadFocus = $app.contains(document.activeElement) || document.activeElement === document.body;
   $app.innerHTML = html; window.scrollTo(0, 0);
   // keep keyboard players on the new screen instead of losing focus to <body>
@@ -904,7 +927,6 @@ function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEvent
 
 /* ----- Who's playing ----- */
 function showProfiles() {
-  screen = 'profiles';
   state.current = null; writeStore();
   applyTheme('space');
   render(`
@@ -927,7 +949,7 @@ function showProfiles() {
       <button class="btn ghost small" id="parents">👪 Grown-ups</button>
     </div>
     ${SYNC_URL && !state.sync.token ? '<p class="muted center" style="margin-top:12px">☁️ Grown-ups: sign in to your family to share progress between devices.</p>' : ''}
-  `);
+  `, 'profiles');
   bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
   document.getElementById('add').onclick = () => showEditProfile();
   document.getElementById('parents').onclick = () => showParentGate();
@@ -1085,7 +1107,6 @@ function showEditProfile(existing, after) {
 /* ----- Home ----- */
 function showHome() {
   const p = me(); if (!p) return showProfiles();
-  screen = 'home';
   const th = theme(p);
   applyTheme(p.theme);
   const subj = SUBJECTS[p.subject] ? p.subject : 'math';
@@ -1153,7 +1174,7 @@ function showHome() {
         <button class="btn ghost small" id="grown">👪 Grown-ups</button>
       </div>
     </div>
-  `);
+  `, 'home');
   bindAll('[data-m]', el => startMission(el.dataset.m));
   document.getElementById('quest').onclick = startQuest;
   bindAll('[data-s]', el => { p.subject = el.dataset.s; save(); showHome(); });
@@ -1582,7 +1603,7 @@ function mathMaker(mid) {
 function bankMaker(mid) {
   return (p, g) => {
     const items = bankItems(BANK[mid].mission, p).filter(q => !g.used.has(q.id));
-    const q = weightedPick(p, items.length ? items : bankItems(BANK[mid].mission, p), x => 'q:' + x.id);
+    const q = pickBank(p, items.length ? items : bankItems(BANK[mid].mission, p), 1)[0];
     g.used.add(q.id);
     return bankQuestion({ q }, p);
   };
@@ -2011,7 +2032,6 @@ function highScoreBoard(highlightTs) {
 }
 function showHighScores() {
   const p = me(), th = theme(p), look = BLASTER[p.theme] || BLASTER.space;
-  screen = 'scores';
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button><span class="chip">🏆 High Scores</span><span></span></div>
     <div class="card stack"><h2>${look.thing} ${look.name}</h2>${highScoreBoard()}
@@ -2036,7 +2056,6 @@ async function sha256(text) {
 
 function showParentGate(then = showParents, back = showProfiles) {
   if (grownupUnlocked()) return then();
-  screen = 'gate';
   const signedIn = SYNC_URL && state.sync.token, pin = state.grownPin;
   const card = inner => render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
@@ -2257,7 +2276,7 @@ const pjson = p => JSON.stringify({ ...p, updated: 0 });
 state.profiles.forEach(p => { snapshot[p.id] = pjson(p); lastPoints[p.id] = p.points || 0; });
 const sumVals = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
 let syncTimer = null, syncing = false, lastSyncError = '';
-let screen = '';                 // 'profiles' | 'home' | other — so a sync can refresh safe screens
+let screen = '';                 // 'profiles' | 'home' | '' (set by render) — so a sync only redraws those two
 
 function markChanged() {
   // stamp any player whose data changed since we last saved it
@@ -2355,7 +2374,11 @@ async function doSync() {
     state.sync.ok = Date.now(); lastSyncError = '';
     if (state.current && !me()) state.current = null;
     writeStore();
-    if (changedView && !game && (screen === 'profiles' || screen === 'home')) (screen === 'home' && me() ? showHome : showProfiles)();
+    if (changedView && !game && (screen === 'profiles' || screen === 'home')) {
+      const y = window.scrollY;   // a background refresh shouldn't jump her to the top
+      (screen === 'home' && me() ? showHome : showProfiles)();
+      window.scrollTo(0, y);
+    }
   } catch (e) {
     lastSyncError = e.message || 'Sync failed';
   } finally { syncing = false; }
@@ -2478,7 +2501,7 @@ function bindSyncCard(rerender) {
 /* ----- Invite link: create a family account ----- */
 async function showInvite(code) {
   history.replaceState(null, '', location.pathname);
-  screen = 'invite'; applyTheme('space');
+  applyTheme('space');
   if (state.sync.token) {
     render(`<div class="card stack center" style="margin-top:30px"><h2>You're already signed in</h2>
       <p>This device is signed in to <b>${esc(state.sync.family)}</b>. To create a different family, sign out first on the Grown-ups page.</p>
