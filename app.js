@@ -183,17 +183,18 @@ function pvChart(n, hl) {
 }
 
 const GENERATORS = {
-  place() {
+  place(p) {
     const type = pick(['blocks', 'digit', 'expanded', 'more']);
-    const n = rand(101, 989);
+    const small = p.grade <= 2 && Math.random() < .6;   // 2nd grade: mostly tens & ones
+    const n = small ? rand(11, 99) : rand(101, p.grade <= 2 ? 499 : 989);
     const h = Math.floor(n / 100), t = Math.floor(n / 10) % 10, o = n % 10;
     if (type === 'blocks') {
       return { key: 'pv-blocks', answer: n, wordy: true,
         prompt: `What number do these blocks show?<div style="margin:14px 0">${blocksHtml(n)}</div><span class="answer-box" id="ans"></span>`,
-        hint: r => `${pvChart(n)}<p class="explain">${h} hundreds + ${t} tens + ${o} ones = <b>${r ? n : '?'}</b><br><span class="muted">Big squares = 100, sticks = 10, little cubes = 1</span></p>` };
+        hint: r => `${pvChart(n)}<p class="explain">${h ? h + ' hundreds + ' : ''}${t} tens + ${o} ones = <b>${r ? n : '?'}</b><br><span class="muted">Big squares = 100, sticks = 10, little cubes = 1</span></p>` };
     }
     if (type === 'digit') {
-      const place = pick(['hundreds', 'tens', 'ones']);
+      const place = pick(small ? ['tens', 'ones'] : ['hundreds', 'tens', 'ones']);
       const ans = place === 'hundreds' ? h : place === 'tens' ? t : o;
       return { key: 'pv-digit', answer: ans, wordy: true,
         prompt: `In <b>${n}</b>, which digit is in the <b>${place}</b> place?<br><span class="answer-box" id="ans"></span>`,
@@ -201,21 +202,25 @@ const GENERATORS = {
     }
     if (type === 'expanded') {
       return { key: 'pv-expanded', answer: n, wordy: true,
-        prompt: `${h * 100} + ${t * 10} + ${o} = <span class="answer-box" id="ans"></span>`,
-        hint: r => `${blocksHtml(n)}<p class="explain">${h} hundreds, ${t} tens, ${o} ones makes <b>${r ? n : '?'}</b></p>` };
+        prompt: `${h ? h * 100 + ' + ' : ''}${t * 10} + ${o} = <span class="answer-box" id="ans"></span>`,
+        hint: r => `${blocksHtml(n)}<p class="explain">${h ? h + ' hundreds, ' : ''}${t} tens, ${o} ones makes <b>${r ? n : '?'}</b></p>` };
     }
-    const step = pick([10, 100]), dir = pick([1, -1]);
-    const base = step === 100 ? rand(150, 850) : rand(110, 880);
+    const step = small ? 10 : pick([10, 100]), dir = pick([1, -1]);
+    const base = small ? rand(20, 89) : step === 100 ? rand(150, p.grade <= 2 ? 399 : 850) : rand(110, p.grade <= 2 ? 480 : 880);
     const ans = base + step * dir;
     return { key: `pv-${step}${dir > 0 ? 'more' : 'less'}`, answer: ans, wordy: true,
       prompt: `What is <b>${step} ${dir > 0 ? 'more' : 'less'}</b> than <b>${base}</b>?<br><span class="answer-box" id="ans"></span>`,
       hint: r => `<p class="explain">Only the <b>${step === 10 ? 'tens' : 'hundreds'}</b> digit changes!<br>${base} → <b>${r ? ans : '?'}</b></p>` };
   },
-  twodigit() {
+  twodigit(p) {
     const add = Math.random() < .5;
+    const easy = p.grade <= 2 && Math.random() < .75;   // 2nd grade: mostly no carrying or borrowing
     let a, b;
-    if (add) { a = rand(11, 79); b = rand(10, Math.min(89, 100 - a)); }
-    else { a = rand(25, 99); b = rand(10, a - 5); }
+    for (;;) {
+      if (add) { a = rand(11, 79); b = rand(10, Math.min(89, 100 - a)); }
+      else { a = rand(25, 99); b = rand(10, a - 5); }
+      if (!easy || (add ? (a % 10) + (b % 10) < 10 : (a % 10) >= (b % 10))) break;
+    }
     const ans = add ? a + b : a - b;
     const regroup = add ? (a % 10) + (b % 10) >= 10 : (a % 10) < (b % 10);
     const sym = add ? '+' : '−';
@@ -246,7 +251,7 @@ function storyTypesFor(missionId, p) {
   if (p.grade >= 4) return ['groups', 'share', 'buy', 'twostep', 'twostep', 'times', 'times', 'money'];
   return p.grade >= 3
     ? ['join', 'separate', 'compare', 'money', 'groups', 'share', 'buy', 'twostep', 'twostep']
-    : ['join', 'separate', 'compare', 'missing', 'money', 'pvbundle'];
+    : ['join', 'separate', 'compare', 'missing', 'money'];
 }
 function weightedPick(p, items, keyOf) {
   const w = items.map(t => { const s = p.stats[keyOf(t)]; return s ? 8 / (s.box + 1) + (s.w > s.r ? 4 : 0) : 4; });
@@ -314,7 +319,7 @@ function makeStory(type, p, big) {
       }
       break;
     case 'pvbundle': {
-      const h = rand(1, 9), t = rand(0, 9), o = rand(1, 9), n = h * 100 + t * 10 + o;
+      const h = rand(1, p.grade <= 2 ? 4 : 9), t = rand(0, 9), o = rand(1, 9), n = h * 100 + t * 10 + o;
       text = `There ${h === 1 ? 'is' : 'are'} ${h} big ${h === 1 ? 'box' : 'boxes'} with 100 ${it[1]} each, ${t} ${t === 1 ? 'bag' : 'bags'} with 10 ${it[1]} each, and ${o} loose ${o === 1 ? it[0] : it[1]}. How many ${it[1]} are there in all?`;
       clue = 'Boxes of 100 are <b>hundreds</b>, bags of 10 are <b>tens</b>, loose ones are <b>ones</b>.';
       return storyQ('wp-pvbundle', text, n, false, r => `<p class="explain">${clue}</p>${pvChart(n)}<p class="explain">${h} hundreds + ${t} tens + ${o} ones = <b>${r ? n : '?'}</b></p>`);
@@ -464,8 +469,16 @@ const CHOICE_TYPES = {
       offered.map(o => ({ label: `${a} ${o} ${b}`, correct: o === op, tag: 'wrong-op' })),
       r => `<p class="explain">🔎 Getting more → <b>+</b> · Giving away → <b>−</b>${p.grade >= 3 ? ' · Equal groups → <b>×</b> · Sharing equally → <b>÷</b>' : ''}${r ? `<br>This story matches <b>${a} ${op} ${b}</b>` : ''}</p>`, true);
   },
-  compare() {
-    const a = rand(102, 987);
+  compare(p) {
+    if (p.grade <= 2 && Math.random() < .6) {   // 2nd grade: mostly 2-digit numbers
+      const a = rand(12, 98), b = Math.random() < .15 ? a : pick([+(String(a)[1] + String(a)[0]), a + pick([-1, 1]) * rand(1, 9)]);
+      const bb = b < 10 || b > 99 || (b === a && Math.random() < .5) ? a + 10 * (a < 90 ? 1 : -1) : b;
+      const right = a < bb ? '<' : a > bb ? '>' : '=';
+      return mcQ('mc-compare', `Which sign goes in the box?<div class="big-math">${a} <span class="slot">?</span> ${bb}</div>`,
+        ['<', '>', '='].map(s => ({ label: s, correct: s === right, tag: s !== '=' && right !== '=' ? 'compare-flip' : null })),
+        r => `<p class="explain">Compare the tens first, then the ones.<br><span class="muted">&lt; means “is less than” · &gt; means “is greater than”</span>${r ? `<br><b>${a} ${right} ${bb}</b>` : ''}</p>`);
+    }
+    const a = rand(102, p.grade <= 2 ? 499 : 987);
     let b;
     const roll = Math.random();
     if (roll < .15) b = a;
@@ -509,8 +522,8 @@ const CHOICE_TYPES = {
       r => `<p class="explain">Is <b>${c}</b> bigger or smaller than ${a}?<br><span class="muted">Bigger → + ${p.grade >= 3 ? 'or ×' : ''} · Smaller → − ${p.grade >= 3 ? 'or ÷' : ''}</span>
         ${r ? `<br>${ops.map(o => `${a} ${o} ${b} = ${OPS[o](a, b) % 1 || OPS[o](a, b) < 0 ? '…' : OPS[o](a, b)}`).join('<br>')}` : ''}</p>`);
   },
-  oddeven() {
-    const n = rand(11, 999), even = n % 2 === 0;
+  oddeven(p) {
+    const n = rand(p.grade <= 2 ? 2 : 11, p.grade <= 2 ? 30 : 999), even = n % 2 === 0;
     return mcQ('mc-oddeven', `Is <b>${n}</b> odd or even?`,
       [{ label: 'Odd', correct: !even }, { label: 'Even', correct: even }],
       r => `<p class="explain">Only the <b>ones digit</b> matters!<br><span class="muted">Ends in 0, 2, 4, 6 or 8 → even · 1, 3, 5, 7 or 9 → odd</span>${r ? `<br>${n} ends in ${n % 10}, so it's <b>${even ? 'even' : 'odd'}</b>` : ''}</p>`);
@@ -549,7 +562,7 @@ const CHOICE_TYPES = {
 GENERATORS.choice = p => {
   const types = p.grade >= 3
     ? ['matchop', 'matchop', 'compare', 'round', 'round', 'sign', 'estimate', 'regroup', 'oddeven']
-    : ['matchop', 'matchop', 'compare', 'compare', 'sign', 'estimate', 'regroup', 'oddeven'];
+    : ['matchop', 'matchop', 'compare', 'compare', 'sign', 'sign', 'oddeven'];
   return CHOICE_TYPES[weightedPick(p, types, t => 'mc-' + t)](p);
 };
 
@@ -1078,7 +1091,7 @@ function showHome() {
   const subj = SUBJECTS[p.subject] ? p.subject : 'math';
   const lvl = levelOf(p, subj);
   const missions = subj === 'math'
-    ? (lvl >= 4 ? MISSIONS45 : MISSIONS).map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: Math.min(m.grade, lvl) }))
+    ? (lvl >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= lvl).map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: Math.min(m.grade, lvl) }))
     : subj === 'typing'
     ? TYPING_LESSONS.map(m => ({ id: m.id, icon: m.icon, name: m.game ? (BLASTER[p.theme] || BLASTER.space).name : m.name, desc: m.desc, grade: 2 }))
     : SUBJECTS[subj].missions.filter(m => (!m.grades || m.grades.includes(lvl)) && (!m.questions || m.questions.some(q => q.type !== 'spell' || (window.SPELL_AUDIO && SPELL_AUDIO[q.word])))).map(m => ({ id: m.id, icon: m.icon, name: esc(m.name), desc: esc(m.desc), grade: lvl }));
@@ -1261,7 +1274,7 @@ function nextQuestion() {
     // word problems: every question in the Story mission, and 2 of 10 elsewhere
     const types = storyTypesFor(game.missionId, p);
     const type = weightedPick(p, types, t => 'wp-' + t);
-    const big = game.missionId === 'twodigit' || (game.missionId === 'story' && (p.grade >= 3 || Math.random() < .35));
+    const big = game.missionId === 'twodigit' || (game.missionId === 'story' && (p.grade >= 3 || Math.random() < .15));
     // 4th-5th grade missions mix in their own kind of word problem (the Story mission uses all of them)
     q = makeStory(type, p, big);
   }
@@ -1554,7 +1567,7 @@ const QUEST_SUBJECTS = ['math', 'reading', 'math', 'writing', 'science', 'math',
 // missions that can lend single questions (story passages are too long for a mix)
 function questMissions(p, subj) {
   const lvl = levelOf(p, subj);
-  if (subj === 'math') return (lvl >= 4 ? MISSIONS45 : MISSIONS).map(m => m.id);
+  if (subj === 'math') return (lvl >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= lvl).map(m => m.id);
   const v = atLevel(p, subj);
   return (SUBJECTS[subj].missions || []).filter(m => m.questions && (!m.grades || m.grades.includes(lvl)) && bankItems(m, v).length).map(m => m.id);
 }
@@ -1590,6 +1603,13 @@ function reviewSlot(k, subject) {
   return null;
 }
 
+// skip missed questions that are no longer asked at her level (e.g. moved up to 3rd grade)
+const CHOICE_ABOVE_2 = ['round', 'estimate', 'regroup'];
+function reviewAtLevel(k, v) {
+  if (k.startsWith('q:')) { const hit = QINDEX[k.slice(2)]; return !!hit && forGrade(hit.q, v); }
+  if (v.grade <= 2 && k.startsWith('mc-')) return !CHOICE_ABOVE_2.includes(k.slice(3));
+  return true;
+}
 function buildQuest(p) {
   const subjects = ['math', 'reading', 'writing', 'science', 'social'].filter(s => SUBJECTS[s]);
   const owner = {};   // mission id -> subject, only missions at her level
@@ -1597,7 +1617,7 @@ function buildQuest(p) {
   // up to 4 things she missed and hasn't mastered yet, no more than 2 from one mission
   const perMission = {};
   const review = Object.entries(p.stats)
-    .filter(([k, s]) => s.w > 0 && s.box < 3 && owner[missionOf(k)])
+    .filter(([k, s]) => s.w > 0 && s.box < 3 && owner[missionOf(k)] && reviewAtLevel(k, atLevel(p, owner[missionOf(k)])))
     .sort((a, b) => (b[1].w - b[1].r * .5) - (a[1].w - a[1].r * .5))
     .filter(([k]) => { const m = missionOf(k); perMission[m] = (perMission[m] || 0) + 1; return perMission[m] <= 2; })
     .map(([k]) => reviewSlot(k, owner[missionOf(k)])).filter(Boolean).slice(0, 4);
@@ -2159,7 +2179,7 @@ function showParents() {
           const last = runs.slice(-3), avg = k => last.length ? Math.round(last.reduce((a, r) => a + r[k], 0) / last.length) : 0;
           return `<tr><td>${esc(l.name)}</td><td>${runs.length}</td><td>${runs.length ? `${avg('wpm')} WPM · ${avg('acc')}% accurate` : '—'}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
         }).join('') :
-        (sid === 'math' ? (levelOf(p, 'math') >= 4 ? MISSIONS45 : MISSIONS) : SUBJECTS[sid].missions.filter(m => !m.grades || m.grades.includes(levelOf(p, sid)))).map(m => {
+        (sid === 'math' ? (levelOf(p, 'math') >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= levelOf(p, 'math')) : SUBJECTS[sid].missions.filter(m => !m.grades || m.grades.includes(levelOf(p, sid)))).map(m => {
         const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
         const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
         const mm = p.missions[m.id] || { plays: 0 };
