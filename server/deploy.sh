@@ -13,7 +13,7 @@ chmod 755 "$OUT"                     # mktemp makes a private folder; the site r
 VER="$(git rev-parse --short HEAD)"
 sed -i.bak -E "s#(src|href)=\"([^\":]+\.(js|css|webmanifest))\"#\1=\"\2?v=$VER\"#g" "$OUT/index.html" && rm -f "$OUT/index.html.bak"
 rsync -az --delete -e "ssh -i $KEY -p $SG_PORT -o StrictHostKeyChecking=accept-new" \
-  --exclude '.git*' --exclude '.claude' --exclude '.impeccable' --exclude 'server' --exclude 'README.md' --exclude 'DESIGN.md' --exclude 'PRODUCT.md' --exclude '.DS_Store' --exclude '.nojekyll' \
+  --exclude '.git*' --exclude '.claude' --exclude '.impeccable' --exclude 'server' --exclude 'docs' --exclude 'README.md' --exclude 'DESIGN.md' --exclude 'PRODUCT.md' --exclude '.DS_Store' --exclude '.nojekyll' \
   "$OUT/" "$SG_USER@$SG_HOST:$SG_PATH/"
 # clear SiteGround's page cache for this site only, so visitors get the new index.html right away
 ssh -i "$KEY" -p "$SG_PORT" "$SG_USER@$SG_HOST" \
