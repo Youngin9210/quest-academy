@@ -2290,8 +2290,7 @@ function showParents() {
     </div>
     <h2 class="gu-section">Family settings</h2>
     <p class="muted">${signedIn ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
-    ${syncCardHtml()}
-    ${howItWorksHtml()}
+    <div class="stack">${syncCardHtml()}${howItWorksHtml()}</div>
   `);
   document.getElementById('back').onclick = showProfiles;
   bindSyncCard(showParents);
