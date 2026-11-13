@@ -59,6 +59,12 @@ const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const today = () => new Date().toLocaleDateString('en-CA');
 function dayDiff(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+// Activity log for the Grown-ups page: { t, k, id, s, r, n, sec }, newest last (see docs/superpowers/specs/2026-11-12-grownups-page-design.md)
+const LOG_MAX = 500;
+function logActivity(p, k, id, s, r, n, startedAt) {
+  const t = Date.now(), sec = startedAt ? Math.min(1200, Math.max(0, Math.round((t - startedAt) / 1000))) : 0;
+  p.log = [...(p.log || []), { t, k, id, s, r, n, sec }].slice(-LOG_MAX);
+}
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -1012,7 +1018,7 @@ function howItWorksHtml() {
       <li><b>Start each day with Today's Quest.</b> 10 questions from every subject, mixing in things she missed. It keeps a daily streak.</li>
       <li><b>Or pick a subject and a mission</b> that matches this week's homework. "Try me!" marks the one she's practiced least.</li>
       <li><b>Missed questions come back</b> a few questions later and keep showing up until they stick. Hints help first; the answer shows after a second miss.</li>
-      <li><b>Below, for each child:</b> accuracy and mastery per mission, "Needs practice" items, common math mistakes, typing keys, and her journal.</li>
+      <li><b>Above, for each child:</b> which days she played, what she's stuck on, progress per subject and her latest activity. "See details" has every mission, mistakes, typing keys, two weeks of activity and her journal.</li>
       <li><b>Typing</b> works best with a real keyboard. <b>Spelling</b> plays real people saying each word.</li>
       ${SYNC_URL ? '<li><b>More than one device?</b> Sign in to your family account on each one (below). Progress syncs, and each device keeps working offline.</li>' : ''}
       <li><b>On an iPad,</b> add the app to the Home Screen (Share → Add to Home Screen) and always play from that icon.</li>
@@ -1189,7 +1195,7 @@ function showHome() {
 
 /* ----- Journal ----- */
 function showJournal(promptIdx) {
-  const p = me(), th = theme(p);
+  const p = me(), th = theme(p), opened = Date.now();
   const prompts = levelOf(p, 'writing') >= 4 && SUBJECTS.writing.journalPrompts45 ? SUBJECTS.writing.journalPrompts45 : SUBJECTS.writing.journalPrompts;
   p.journal = p.journal || [];
   const day = Math.floor(Date.now() / 86400000);
@@ -1214,6 +1220,7 @@ function showJournal(promptIdx) {
     const text = document.getElementById('jt').value.trim();
     if (text.split(/\s+/).filter(Boolean).length < 5) { toast('Write a little more! ✏️'); return; }
     p.journal.unshift({ date: today(), ts: Date.now(), prompt, text });
+    logActivity(p, 'journal', 'journal', 'writing', text.split(/\s+/).filter(Boolean).length, 0, opened);
     p.journal = p.journal.slice(0, 200);
     p.points += 5;
     touchStreak(p); save();
@@ -1255,7 +1262,7 @@ function beginMission(missionId) {
   real.passages = real.passages || {};
   const p = atLevel(real, subjectOf(missionId));
   game = { missionId, subject: subjectOf(missionId), n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false,
-    queue: b ? buildBankQueue(b.mission, p) : null, qi: 0, len: MISSION_LEN };
+    queue: b ? buildBankQueue(b.mission, p) : null, qi: 0, len: MISSION_LEN, started: Date.now() };
   if (b) { game.len = game.queue.length; save(); }
   nextQuestion();
 }
@@ -1543,6 +1550,7 @@ function finishMission() {
   const p = me(), th = theme(p);
   const m = p.missions[game.missionId] || (p.missions[game.missionId] = { plays: 0, history: [] });
   m.plays++; m.history = [...m.history, game.firstTry].slice(-20);
+  logActivity(p, 'mission', game.missionId, game.subject, game.firstTry, game.len, game.started);
   const len = game.len, perfect = game.firstTry === len;
   const earned = game.firstTry + (perfect ? 5 : 0);
   p.points += earned;
@@ -1685,7 +1693,7 @@ function startQuest() {
   const p = me(), slots = buildQuest(p);
   if (!slots.length) { toast('No quest questions for this grade yet.'); return; }
   game = { missionId: 'quest', quest: true, slots, used: new Set(), subject: slots[0].subject, n: 0, firstTry: 0, recent: [], retry: [],
-    q: null, input: '', tries: 0, locked: false, queue: null, qi: 0, len: slots.length };
+    q: null, input: '', tries: 0, locked: false, queue: null, qi: 0, len: slots.length, started: Date.now() };
   nextQuestion();
 }
 
@@ -1695,6 +1703,7 @@ function finishQuest() {
   const earned = right + (perfect ? 5 : 0) + (first ? QUEST_BONUS : 0);
   p.points += earned;
   if (first) p.questLog = [...(p.questLog || []), t].slice(-120);
+  logActivity(p, 'quest', 'quest', 'quest', right, len, game.started);
   touchStreak(p);
   const found = p.found[p.theme] || 0;
   let prize = null;
@@ -1873,6 +1882,7 @@ function finishTyping(lesson, t) {
   const wpm = Math.round(t.correct / 5 / mins), acc = Math.round(t.correct / (t.correct + t.errors) * 100);
   const prevBest = bestLessonRun(p, lesson.id), newPB = acc >= 90 && (!prevBest || wpm > prevBest.wpm) && !!prevBest;
   p.typing = p.typing || {}; (p.typing[lesson.id] = p.typing[lesson.id] || []).push({ wpm, acc, date: today() });
+  logActivity(p, 'typing', lesson.id, 'typing', wpm, acc, t.start);
   p.typing[lesson.id] = p.typing[lesson.id].slice(-30);
   p.typeMiss = p.typeMiss || {};
   Object.entries(t.missed).forEach(([k, n]) => { p.typeMiss[k] = (p.typeMiss[k] || 0) + n; });
@@ -1916,7 +1926,7 @@ function startBlaster() {
   const p = me(), th = theme(p), look = BLASTER[p.theme] || BLASTER.space;
   const tl = levelOf(p, 'typing'), maxLen = ({ 2: 5, 3: 7 })[tl] || 9;
   const pool = TYPE_WORDS.filter(w => w.length >= 2 && w.length <= maxLen);
-  const g = { words: [], target: null, score: 0, combo: 0, lives: 3, zapped: 0, level: 1, t0: performance.now(), last: performance.now(), spawnAt: 0, alive: true };
+  const g = { started: Date.now(), words: [], target: null, score: 0, combo: 0, lives: 3, zapped: 0, level: 1, t0: performance.now(), last: performance.now(), spawnAt: 0, alive: true };
   render(`
     <div class="play">
       <div class="topbar" style="margin:0">
@@ -1996,6 +2006,7 @@ function endBlaster(g, look) {
   const familyTop = (familyBlasterScores()[0] || {}).score || 0;
   const ts = Date.now();
   (p.typing['type-game'] = p.typing['type-game'] || []).push({ score: g.score, zapped: g.zapped, date: today(), ts });
+  logActivity(p, 'game', 'type-game', 'typing', g.score, 0, g.started);
   // keep each player's 10 best games plus the 20 most recent
   const runs = p.typing['type-game'], keep = new Set([...runs.slice().sort((a, b) => b.score - a.score).slice(0, 10), ...runs.slice(-20)]);
   p.typing['type-game'] = runs.filter(r => keep.has(r));
@@ -2180,56 +2191,171 @@ function labelKey(k) {
   return names[k] || k.replace('-', ' − ').replace('+', ' + ').replace('×', ' × ').replace('÷', ' ÷ ');
 }
 
+/* ----- Grown-ups: overview (one card per child) and a detail page per child ----- */
+const dayKey = ts => new Date(ts).toLocaleDateString('en-CA');
+// the last n calendar days, oldest first, as YYYY-MM-DD
+function lastDays(n) {
+  const out = [], d = new Date();
+  for (let i = n - 1; i >= 0; i--) { const x = new Date(d); x.setDate(d.getDate() - i); out.push(x.toLocaleDateString('en-CA')); }
+  return out;
+}
+// every day she played: the activity log plus dates saved before the log existed
+function practiceDays(p) {
+  const days = new Set((p.log || []).map(e => dayKey(e.t)));
+  (p.questLog || []).forEach(d => days.add(d));
+  (p.journal || []).forEach(e => e.date && days.add(e.date));
+  Object.values(p.typing || {}).forEach(runs => runs.forEach(r => r.date && days.add(r.date)));
+  if (p.lastDay) days.add(p.lastDay);
+  return days;
+}
+const logSince = (p, days) => { const keys = new Set(lastDays(days)); return (p.log || []).filter(e => keys.has(dayKey(e.t))); };
+const minutesOf = list => Math.round(list.reduce((a, e) => a + (e.sec || 0), 0) / 60);
+const plural = (n, w) => `${n} ${n === 1 ? w : /[^aeiou]y$/.test(w) ? w.slice(0, -1) + 'ies' : w + 's'}`;
+
+function dayDots(p, n) {
+  const played = practiceDays(p), log = p.log || [];
+  return `<div class="days" role="list">${lastDays(n).map(d => {
+    const dt = new Date(d + 'T12:00:00'), on = played.has(d), items = log.filter(e => dayKey(e.t) === d);
+    const tip = `${dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}: ${on ? (items.length ? `${plural(items.length, 'activity')}${minutesOf(items) ? `, ${minutesOf(items)} min` : ''}` : 'played') : 'did not play'}`;
+    return `<span class="day ${on ? 'on' : ''} ${d === today() ? 'today' : ''}" role="listitem" title="${esc(tip)}" aria-label="${esc(tip)}">${dt.toLocaleDateString(undefined, { weekday: 'narrow' })}</span>`;
+  }).join('')}</div>`;
+}
+
+// the missions at her level in a subject: [{ id, name }]
+function parentMissions(p, sid) {
+  const lvl = levelOf(p, sid);
+  if (sid === 'typing') return TYPING_LESSONS.map(l => ({ id: l.id, name: l.game ? (BLASTER[p.theme] || BLASTER.space).name : l.name }));
+  if (sid === 'math') return (lvl >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= lvl).map(m => ({ id: m.id, name: m.desc }));
+  return SUBJECTS[sid].missions.filter(m => !m.grades || m.grades.includes(lvl)).map(m => ({ id: m.id, name: m.name }));
+}
+const missionMastery = (p, sid, id) => sid === 'typing' ? typingProgress(p, id) : mastery(p, id);
+function subjectMastery(p, sid) {
+  const ms = parentMissions(p, sid);
+  return ms.length ? ms.reduce((a, m) => a + missionMastery(p, sid, m.id), 0) / ms.length : 0;
+}
+const masteryBar = (pct, label) => `<span class="gu-bar" role="img" aria-label="${esc(label)}: ${pct}% mastered"><i style="width:${pct}%"></i></span><span class="pct">${pct}%</span>`;
+
+// what she keeps missing, worst first, grouped later by subject
+function stuckList(p) {
+  return Object.entries(p.stats)
+    .filter(([k, s]) => s.w > 0 && s.box < 3 && (!k.startsWith('q:') || QINDEX[k.slice(2)]))
+    .sort((a, b) => (b[1].w - b[1].r * .5) - (a[1].w - a[1].r * .5))
+    .map(([k, s]) => ({ k, s, subject: subjectOf(missionOf(k)), label: labelKey(k) }));
+}
+const stuckChip = x => `<span class="fact" title="right ${x.s.r}, missed ${x.s.w}">${esc(x.label)}</span>`;
+
+function missionTitle(id) {
+  if (BANK[id]) return BANK[id].mission.name;
+  if (TYPE_BY_ID[id]) return TYPE_BY_ID[id].name;
+  const m = [...MISSIONS, ...MISSIONS45].find(x => x.id === id);
+  return m ? m.desc : id;
+}
+function activityText(e, p) {
+  const icon = e.k === 'quest' ? '⭐' : e.k === 'journal' ? '📔' : (SUBJECTS[e.s] || {}).icon || '🎯';
+  const what = e.k === 'quest' ? "Today's Quest" : e.k === 'journal' ? 'Journal' : e.k === 'game' ? (BLASTER[p.theme] || BLASTER.space).name : missionTitle(e.id);
+  const score = e.k === 'journal' ? plural(e.r, 'word') : e.k === 'typing' ? `${e.r} WPM, ${e.n}% accurate` : e.k === 'game' ? `score ${e.r}` : `${e.r}/${e.n} first try`;
+  return `${icon} <b>${esc(what)}</b> · ${score}${e.sec >= 60 ? ` · ${Math.round(e.sec / 60)} min` : ''}`;
+}
+function dayName(d, short = false) {
+  const diff = dayDiff(d, today());
+  if (diff === 0) return short ? 'today' : 'Today';
+  if (diff === 1) return short ? 'yesterday' : 'Yesterday';
+  return new Date(d + 'T12:00:00').toLocaleDateString(undefined, short ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'long', month: 'short', day: 'numeric' });
+}
+const levelsText = p => `${gradeName(p.grade)} grade${Object.keys(p.levels || {}).length ? ' · ' + Object.entries(p.levels).map(([s, g]) => `${SUBJECTS[s] ? SUBJECTS[s].name : s} ${gradeName(g)}`).join(', ') : ''}`;
+const streakOf = p => p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0;
+
 function showParents() {
   applyTheme('space');
+  const signedIn = SYNC_URL && state.sync.token;
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
     <h1>Grown-ups</h1>
-    <p class="muted">${SYNC_URL && state.sync.token ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
-    ${howItWorksHtml()}
-    ${syncCardHtml()}
-    ${state.profiles.length ? '' : '<p>No players yet.</p>'}
-    <div class="stack">
+    ${state.profiles.length ? '' : '<p>No players yet. Tap "New player" on the Who\'s playing screen.</p>'}
+    <div class="gu-grid">
     ${state.profiles.map(p => {
-      const rows = SUBJECT_ORDER.map(sid => `<tr class="subject-row"><th colspan="4">${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</th></tr>` +
-        (sid === 'typing' ? TYPING_LESSONS.map(l => {
-          const runs = (p.typing || {})[l.id] || [];
-          if (l.game) return `<tr><td>${esc((BLASTER[p.theme] || BLASTER.space).name)}</td><td>${runs.length}</td><td>High score: ${p.typeHigh || 0}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
-          const last = runs.slice(-3), avg = k => last.length ? Math.round(last.reduce((a, r) => a + r[k], 0) / last.length) : 0;
-          return `<tr><td>${esc(l.name)}</td><td>${runs.length}</td><td>${runs.length ? `${avg('wpm')} WPM · ${avg('acc')}% accurate` : '—'}</td><td>${Math.round(typingProgress(p, l.id) * 100)}%</td></tr>`;
-        }).join('') :
-        (sid === 'math' ? (levelOf(p, 'math') >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= levelOf(p, 'math')) : SUBJECTS[sid].missions.filter(m => !m.grades || m.grades.includes(levelOf(p, sid)))).map(m => {
-        const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
-        const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
-        const mm = p.missions[m.id] || { plays: 0 };
-        return `<tr><td>${esc(sid === 'math' ? m.desc : m.name)}</td><td>${mm.plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td>${Math.round(mastery(p, m.id) * 100)}%${POOLS[m.id] ? ` <span class="muted">(${masteredCount(p, m.id)} of ${POOLS[m.id].length} facts)</span>` : ''}</td></tr>`;
-      }).join(''))).join('');
-      return `<div class="card stack">
-        <h2>${p.avatar} ${esc(p.name)} <span class="muted" style="font-size:1rem">${gradeName(p.grade)} grade${Object.keys(p.levels || {}).length ? ' (' + Object.entries(p.levels).map(([s, g]) => `${SUBJECTS[s] ? SUBJECTS[s].name : s} ${gradeName(g)}`).join(', ') + ')' : ''} · ${THEMES[p.theme].name}</span></h2>
-        <p style="margin:0">🔥 Streak: ${p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0} days · Last played: ${p.lastDay || 'never'} · ⭐ Daily quests: ${questsThisWeek(p)} of the last 7 days</p>
-        <div style="overflow-x:auto"><table><tr><th>Skill</th><th>Missions</th><th>First-try accuracy</th><th>Mastered</th></tr>${rows}</table></div>
-        <div><b>Needs practice</b><div class="facts" style="margin-top:8px">${trickyFacts(p)}</div></div>
-        <div><b>Trickiest typing keys</b><div class="facts" style="margin-top:8px">${
-          Object.entries(p.typeMiss || {}).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, n]) => `<span class="fact">${k === ' ' ? 'space' : esc(k)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
-        <div><b>Common mistakes</b> <span class="muted">(from the multiple choice mission)</span><div class="facts" style="margin-top:8px">${
-          Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
-        <div><b>Journal</b> <span class="muted">(${(p.journal || []).length} entries)</span>${(p.journal || []).slice(0, 5).map(e =>
-          `<div class="journal-entry" style="margin-top:10px"><div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('') || '<div class="muted">Nothing written yet.</div>'}</div>
-        <div class="row-actions" style="justify-content:flex-start"><button class="btn ghost small" data-edit="${p.id}">⚙️ Grade, levels & settings</button><button class="btn ghost small danger" data-del="${p.id}">Delete player</button></div>
-      </div>`;
+      const week = logSince(p, 7), played = week.filter(e => e.k !== 'journal'), mins = minutesOf(week);
+      const stuck = stuckList(p).slice(0, 3), latest = (p.log || []).slice(-3).reverse();
+      return `<section class="card gu-card" aria-label="${esc(p.name)}">
+        <div class="gu-head"><span class="gu-av">${p.avatar}</span><div><h2>${esc(p.name)}</h2><span class="muted">${esc(levelsText(p))}</span></div>
+          <span class="chip">🔥 ${plural(streakOf(p), 'day')}</span></div>
+        <div><h3>This week</h3>${dayDots(p, 7)}
+          <p class="muted gu-note">${played.length || mins ? `${plural(played.length, 'activity')}${mins ? ` · about ${mins} min` : ''} · ${plural(questsThisWeek(p), 'daily quest')}` : `${plural(questsThisWeek(p), 'daily quest')} · missions and minutes show from ${esc(state.logStart)}`}</p></div>
+        <div><h3>Stuck on</h3>${stuck.length ? `<div class="facts">${stuck.map(stuckChip).join('')}</div>` : '<p class="muted gu-note">Nothing tricky right now. Nice!</p>'}</div>
+        <div><h3>Subjects</h3><div class="gu-bars">${SUBJECT_ORDER.map(sid => `<span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</span>${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}`).join('')}</div></div>
+        <div><h3>Latest</h3>${latest.length ? `<ul class="gu-feed">${latest.map(e => `<li>${activityText(e, p)} <span class="muted">· ${esc(dayName(dayKey(e.t), true))}</span></li>`).join('')}</ul>` : '<p class="muted gu-note">Nothing yet. Activities show here as she plays.</p>'}</div>
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn" data-detail="${p.id}">See details →</button></div>
+      </section>`;
     }).join('')}
     </div>
+    <h2 class="gu-section">Family settings</h2>
+    <p class="muted">${signedIn ? 'Progress is shared across your family\'s devices.' : 'Progress is saved only in this browser on this device.'}</p>
+    ${syncCardHtml()}
+    ${howItWorksHtml()}
   `);
   document.getElementById('back').onclick = showProfiles;
   bindSyncCard(showParents);
   const ss = document.getElementById('showSetup');
   if (ss) ss.onclick = () => { state.setupHidden = false; writeStore(); showProfiles(); };
-  bindAll('[data-edit]', el => { state.current = el.dataset.edit; writeStore(); showEditProfile(me(), showParents); });
+  bindAll('[data-detail]', el => showParentDetail(el.dataset.detail));
   if (!state.setupSeen) { state.setupSeen = true; writeStore(); }
-  bindAll('[data-del]', el => {
-    const p = state.profiles.find(x => x.id === el.dataset.del);
-    if (p && deletePlayer(p)) showParents();
-  });
+}
+
+function showParentDetail(id, journalShown = 5) {
+  const p = state.profiles.find(x => x.id === id);
+  if (!p) return showParents();
+  applyTheme('space');
+  const days = lastDays(14), recent = logSince(p, 14), stuck = stuckList(p);
+  const bySubject = SUBJECT_ORDER.map(sid => [sid, stuck.filter(x => x.subject === sid)]).filter(([, l]) => l.length);
+  const feedDays = days.slice().reverse().map(d => [d, recent.filter(e => dayKey(e.t) === d).reverse()]).filter(([, l]) => l.length);
+  const journal = p.journal || [];
+  render(`
+    <div class="topbar"><button class="btn ghost small" id="back">← All players</button></div>
+    <div class="gu-head"><span class="gu-av">${p.avatar}</span><div><h1 style="margin:0">${esc(p.name)}</h1><span class="muted">${esc(levelsText(p))} · ${THEMES[p.theme].name}</span></div></div>
+
+    <section class="card stack"><h2>Last 2 weeks</h2>${dayDots(p, 14)}
+      <p class="muted gu-note">🔥 ${streakOf(p)}-day streak · ⭐ ${plural(questsThisWeek(p), 'daily quest')} this week · last played ${p.lastDay ? esc(dayName(p.lastDay, true)) : 'never'}${recent.length ? ` · ${plural(recent.filter(e => e.k !== 'journal').length, 'activity')}, about ${minutesOf(recent)} min in 2 weeks` : ''}</p></section>
+
+    <section class="card stack"><h2>Subjects</h2>
+      ${SUBJECT_ORDER.map(sid => `<details class="gu-subject"><summary><span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name} <span class="muted">${gradeName(levelOf(p, sid))}</span></span><span class="gu-sumbar">${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}</span></summary>
+        <div style="overflow-x:auto"><table><tr><th>Mission</th><th>Played</th><th>${sid === 'typing' ? 'Recent' : 'First try'}</th><th>Mastered</th></tr>
+        ${parentMissions(p, sid).map(m => {
+          if (sid === 'typing') {
+            const runs = (p.typing || {})[m.id] || [], last = runs.slice(-3), avg = k => Math.round(last.reduce((a, r) => a + r[k], 0) / last.length);
+            const recentTxt = m.id === 'type-game' ? `best ${p.typeHigh || 0}` : runs.length ? `${avg('wpm')} WPM · ${avg('acc')}%` : '—';
+            return `<tr><td>${esc(m.name)}</td><td>${runs.length}</td><td>${recentTxt}</td><td class="gu-cellbar">${masteryBar(Math.round(typingProgress(p, m.id) * 100), m.name)}</td></tr>`;
+          }
+          const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
+          const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
+          return `<tr><td>${esc(m.name)}</td><td>${(p.missions[m.id] || { plays: 0 }).plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td class="gu-cellbar">${masteryBar(Math.round(mastery(p, m.id) * 100), m.name)}</td></tr>`;
+        }).join('')}</table></div></details>`).join('')}
+    </section>
+
+    <section class="card stack"><h2>Stuck on</h2>
+      ${bySubject.length ? bySubject.map(([sid, l]) => `<div><h3>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</h3><div class="facts">${l.slice(0, 12).map(stuckChip).join('')}</div></div>`).join('') : '<p class="muted gu-note">Nothing tricky right now. Nice!</p>'}
+      <div><h3>Common math mistakes</h3><div class="facts">${Object.entries(p.mistakes || {}).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="fact" title="${esc(MISTAKES[t] ? MISTAKES[t][1] : '')}">${esc(MISTAKES[t] ? MISTAKES[t][0] : t)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
+      <div><h3>Trickiest typing keys</h3><div class="facts">${Object.entries(p.typeMiss || {}).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, n]) => `<span class="fact">${k === ' ' ? 'space' : esc(k)} ×${n}</span>`).join('') || '<span class="muted">None yet</span>'}</div></div>
+    </section>
+
+    <section class="card stack"><h2>Activity</h2>
+      ${feedDays.length ? feedDays.map(([d, l]) => `<div><h3>${esc(dayName(d))} <span class="muted">· ${plural(l.length, 'activity')}${minutesOf(l) ? `, ${minutesOf(l)} min` : ''}</span></h3><ul class="gu-feed">${l.map(e => `<li>${activityText(e, p)}</li>`).join('')}</ul></div>`).join('')
+        : `<p class="muted gu-note">Nothing in the last 2 weeks yet. Activity is recorded from ${esc(state.logStart)}.</p>`}
+    </section>
+
+    <section class="card stack"><h2>Journal <span class="muted" style="font-size:1rem">${plural(journal.length, 'entry')}</span></h2>
+      ${journal.slice(0, journalShown).map(e => `<div class="journal-entry"><div class="muted">${esc(dayName(e.date))} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('') || '<p class="muted gu-note">Nothing written yet.</p>'}
+      ${journal.length > journalShown ? '<div class="row-actions" style="justify-content:flex-start"><button class="btn ghost small" id="moreJ">Show more</button></div>' : ''}
+    </section>
+
+    <section class="card stack"><h2>Settings</h2>
+      <div class="row-actions" style="justify-content:flex-start"><button class="btn ghost small" id="edit">⚙️ Grade, levels & settings</button><button class="btn ghost small danger" id="del">Delete player</button></div>
+    </section>
+  `);
+  document.getElementById('back').onclick = showParents;
+  const more = document.getElementById('moreJ');
+  if (more) more.onclick = () => { const y = window.scrollY; showParentDetail(id, journalShown + 10); window.scrollTo(0, y); };
+  document.getElementById('edit').onclick = () => { state.current = p.id; writeStore(); showEditProfile(me(), () => showParentDetail(id)); };
+  document.getElementById('del').onclick = () => { if (deletePlayer(p)) showParents(); };
 }
 // asks first; removes the player here and (through sync) on every family device
 function deletePlayer(p) {
@@ -2269,6 +2395,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 state.sync = state.sync || { token: '', family: '', admin: false, last: 0, tombs: [], ok: 0 };
 state.sync.tombs = state.sync.tombs || [];
+state.logStart = state.logStart || today();   // the Grown-ups activity log starts here on this device
 state.device = state.device || ('d' + Math.random().toString(36).slice(2, 10));
 const snapshot = {};             // player id -> JSON last known to match the server/our own save
 const lastPoints = {};           // player id -> points at last save, to count what THIS device earned
@@ -2329,6 +2456,7 @@ function mergePlayer(a, b) {
   m.missions = { ...(a.missions || {}) };
   for (const [k, s] of Object.entries(b.missions || {})) if (!m.missions[k] || s.plays > m.missions[k].plays) m.missions[k] = s;
   const uniq = (list, key) => { const seen = new Set(); return list.filter(x => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
+  m.log = uniq([...(a.log || []), ...(b.log || [])], e => e.t + '|' + e.k + '|' + e.id).sort((x, y) => x.t - y.t).slice(-LOG_MAX);
   m.journal = uniq([...(a.journal || []), ...(b.journal || [])], e => e.date + '|' + e.text).sort((x, y) => (y.ts || 0) - (x.ts || 0) || (y.date > x.date ? 1 : -1)).slice(0, 200);
   m.typing = {};
   for (const id of new Set([...Object.keys(a.typing || {}), ...Object.keys(b.typing || {})])) {
