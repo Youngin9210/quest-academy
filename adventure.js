@@ -16,8 +16,10 @@ const STYLE = {
 // small seeded random so a region always draws the same
 function rng(seed) { let a = seed * 9301 + 49297; return () => { a = (a * 9301 + 49297) % 233280; return a / 233280; }; }
 
+const WORLD_SEED = { space: 1, ocean: 2, pets: 3, bakery: 4 };
+
 function decoFor(world, region) {
-  const r = rng(WORLD_SEED[world] * 10 + region + 1), out = [];
+  const r = rng((WORLD_SEED[world] || 1) * 10 + region + 1), out = [];
   const px = () => Math.round(r() * W), py = (top = 0, bottom = H) => Math.round(top + r() * (bottom - top));
   if (world === 'space') {
     for (let i = 0; i < 46; i++) out.push(`<circle cx="${px()}" cy="${py()}" r="${(r() * 1.8 + .6).toFixed(1)}" fill="#fff" opacity="${(r() * .6 + .3).toFixed(2)}"/>`);
@@ -35,12 +37,11 @@ function decoFor(world, region) {
       out.push(`<g fill="#fff" opacity=".8"><circle cx="${x}" cy="${y}" r="16"/><circle cx="${x + 18}" cy="${y + 4}" r="13"/><circle cx="${x - 16}" cy="${y + 5}" r="11"/></g>`); }
   } else {
     const cols = ['#ff6fa5', '#ffd23f', '#59c3ff', '#7ee081', '#b388ff'];
-    for (let i = 0; i < 60; i++) out.push(`<rect x="${px()}" y="${py()}" width="10" height="3" rx="1.5" fill="${cols[i % cols.length]}" transform="rotate(${Math.round(r() * 180)} ${px()} ${py()})" opacity=".7"/>`);
+    for (let i = 0; i < 60; i++) { const x = px(), y = py(); out.push(`<rect x="${x}" y="${y}" width="10" height="3" rx="1.5" fill="${cols[i % cols.length]}" transform="rotate(${Math.round(r() * 180)} ${x} ${y})" opacity=".7"/>`); }
     for (let i = 0; i < 4; i++) out.push(`<circle cx="${px()}" cy="${py(100, 800)}" r="${(10 + r() * 12).toFixed(0)}" fill="#fff" opacity=".55"/>`);
   }
   return out.join('');
 }
-const WORLD_SEED = { space: 1, ocean: 2, pets: 3, bakery: 4 };
 
 function pathD() {
   let d = `M${POINTS[0][0]} ${POINTS[0][1] + 60}`;
@@ -70,18 +71,18 @@ const starRow = n => `<span class="adv-stars" aria-hidden="true">${[1, 2, 3].map
 const escAttr = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function drawMap(el, o) {
-  const tokenAt = i => POINTS[Math.min(i, POINTS.length - 1)].map((v, k) => v + (k === 0 ? 40 : -34));
+  const tokenAt = i => { const j = Math.min(i, POINTS.length - 1), [dx, dy] = j === 5 ? [78, 12] : [40, -34]; return [POINTS[j][0] + dx, POINTS[j][1] + dy]; };
   const stops = o.stops.map((s, i) => {
     if (!s) return '';
-    const done = i < o.stop, next = i === o.stop, locked = !done && !next;
-    const label = done ? `Stop ${i + 1}: ${s.name}, ${s.stars} ${s.stars === 1 ? 'star' : 'stars'}. Play again` : next ? `Stop ${i + 1}: ${s.name}. Play now` : `Stop ${i + 1}: ${s.name}, locked`;
-    return `<button class="adv-stop ${done ? 'done' : ''} ${next ? 'next' : ''}" data-stop="${i}" style="${pct(POINTS[i])}" aria-label="${escAttr(label)}" ${locked ? 'disabled' : ''}>
+    const done = i < o.stop, next = i === o.stop, locked = !done && !next, stars = s.stars || 0;
+    const label = done ? `Stop ${i + 1}: ${s.name}, ${stars} ${stars === 1 ? 'star' : 'stars'}. Play again` : next ? `Stop ${i + 1}: ${s.name}. Play now` : `Stop ${i + 1}: ${s.name}, locked`;
+    return `<button type="button" class="adv-stop ${done ? 'done' : ''} ${next ? 'next' : ''}" data-stop="${i}" style="${pct(POINTS[i])}" aria-label="${escAttr(label)}" ${locked ? 'disabled' : ''}>
       <span class="adv-icon" aria-hidden="true">${s.icon}</span>${done ? starRow(s.stars) : ''}</button>`;
   }).join('');
   const bossOpen = o.stop >= 5;
-  const boss = `<button class="adv-stop adv-boss ${bossOpen ? 'next' : ''}" data-stop="5" style="${pct(POINTS[5])}" aria-label="${escAttr(bossOpen ? `Boss: ${o.boss.name}. Play now` : `Boss: ${o.boss.name}, locked`)}" ${bossOpen ? '' : 'disabled'}>
+  const boss = `<button type="button" class="adv-stop adv-boss ${bossOpen ? 'next' : ''}" data-stop="5" style="${pct(POINTS[5])}" aria-label="${escAttr(bossOpen ? `Boss: ${o.boss.name}. Play now` : `Boss: ${o.boss.name}, locked`)}" ${bossOpen ? '' : 'disabled'}>
       <span class="adv-face" aria-hidden="true">${o.boss.face}</span></button>`;
-  const bonus = o.bonus ? `<button class="adv-stop adv-bonus" data-bonus style="${pct(BONUS)}" aria-label="Today's Quest bonus stop"><span class="adv-icon" aria-hidden="true">⭐</span></button>` : '';
+  const bonus = o.bonus ? `<button type="button" class="adv-stop adv-bonus" data-bonus style="${pct(BONUS)}" aria-label="Today's Quest bonus stop"><span class="adv-icon" aria-hidden="true">⭐</span></button>` : '';
   const start = tokenAt(o.from != null ? o.from : o.stop);
   el.innerHTML = `<div class="adv-map">${sceneSvg(o.world, o.region)}${stops}${boss}${bonus}
     <div class="adv-token" id="advToken" style="${pct(start)}" aria-hidden="true">${o.token}</div></div>`;
@@ -119,7 +120,7 @@ export function villainSvg(world, region) {
       <circle cx="50" cy="62" r="28" fill="#d8ab86"/>${eyes(56)}<circle cx="50" cy="70" r="4" fill="#e86a8a"/><path d="M30 70 H18 M30 74 H20 M70 70 H82 M70 74 H80" stroke="#6b4a33" stroke-width="2"/><path d="M43 79 Q50 84 57 79" fill="none" stroke="#6b4a33" stroke-width="2.5" stroke-linecap="round"/>`;
   else body = `<path d="M18 48 L8 30 L30 42 Z M82 48 L92 30 L70 42 Z" fill="#5ccf7a"/><circle cx="50" cy="60" r="30" fill="#6fe08c"/><line x1="50" y1="30" x2="50" y2="18" stroke="#5ccf7a" stroke-width="3"/><circle cx="50" cy="16" r="4" fill="#ffd23f"/>
       ${eyes(56)}<path d="M36 72 Q50 82 64 72" fill="#2d6b3d"/><path d="M42 73 L44 77 L46 73 M54 73 L56 77 L58 73" fill="#fff"/>`;
-  return `<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">${body}${hat}</svg>`;
+  return `<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true" focusable="false">${body}${world === 'ocean' ? `<g transform="translate(50 21) scale(.5) translate(-50 -34)">${hat}</g>` : hat}</svg>`;
 }
 
 // her creature as a small flat token (or her egg)
