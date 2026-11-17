@@ -1028,7 +1028,62 @@ function showProfiles() {
   bindAll('.profile[data-id]', el => openPlayer(state.profiles.find(p => p.id === el.dataset.id)));
   document.getElementById('parents').onclick = () => showParentGate();
 }
-function openPlayer(p) { state.current = p.id; save(); showHome(); }
+function openPlayer(p) {
+  state.current = p.id; save();
+  if (!FR.needsKidWelcome(p)) return showHome();
+  return p.pickLook ? showKidWorld(p) : showKidTour(p, 0);
+}
+
+/* ----- First time for a kid: pick a world and look, then a 3-card tour ----- */
+const WORLD_BLURB = { space: 'Aliens, rockets and stars', ocean: 'Fish, pearls and sunken ships', pets: 'Puppies, kittens and bunnies', bakery: 'Cupcakes, cookies and sweet treats' };
+function showKidWorld(p) {
+  applyTheme(p.theme || 'space');
+  render(`<div class="kid-welcome stack">
+      <h1>Hi ${esc(p.name)}! Pick your world</h1>
+      <div class="world-pick">${Object.entries(THEMES).map(([id, t]) => `<button class="world-card" data-theme="${id}">
+        <span class="wc-icon" aria-hidden="true">${t.icon}</span><b>${esc(t.name)}</b><span class="muted">${WORLD_BLURB[id] || ''}</span></button>`).join('')}</div>
+    </div>`);
+  bindAll('[data-theme]', el => {
+    p.theme = el.dataset.theme;
+    if (!THEMES[p.theme].avatars.includes(p.avatar)) p.avatar = THEMES[p.theme].avatars[0];   // never blank, even if she stops here
+    save(); showKidLook(p);
+  });
+}
+function showKidLook(p) {
+  const th = THEMES[p.theme];
+  applyTheme(p.theme);
+  render(`<div class="topbar"><button class="btn ghost small" id="back">← Worlds</button></div>
+    <div class="kid-welcome stack">
+      <h1>Pick your ${esc(th.playerWord.toLowerCase())}</h1>
+      <div class="look-pick">${th.avatars.map(a => `<button class="pick emoji" data-av="${a}" aria-pressed="${a === p.avatar}">${a}</button>`).join('')}</div>
+      <div class="setup-actions"><button class="btn big-btn" id="next" ${p.avatar ? '' : 'disabled'}>Next</button></div>
+    </div>`);
+  document.getElementById('back').onclick = () => showKidWorld(p);
+  bindAll('[data-av]', el => { p.avatar = el.dataset.av; save(); showKidLook(p); });
+  document.getElementById('next').onclick = () => { delete p.pickLook; save(); showKidTour(p, 0); };
+}
+function showKidTour(p, i) {
+  applyTheme(p.theme);
+  const tabs = `<div class="subject-tabs">${SUBJECT_ORDER.slice(0, 3).map((s, k) => `<span class="subject-tab" aria-selected="${k === 0}"><span class="ti">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></span>`).join('')}</div>`;
+  const cards = [
+    { pic: tabs, text: 'Pick a subject, then a mission.' },
+    { pic: questCardHtml(p), text: "Today's Quest is a mix from every subject. A new one every day!" },
+    { pic: petCardHtml(p), text: 'Master questions to hatch your egg!' },
+  ];
+  const c = cards[i], last = i === cards.length - 1;
+  render(`<div class="kid-welcome tour stack">
+      <p class="setup-step center">${i + 1} of ${cards.length}</p>
+      <div class="tour-pic" inert aria-hidden="true">${c.pic}</div>
+      <h1 class="tour-text">${c.text}</h1>
+      <div class="setup-actions">
+        <button class="btn big-btn" id="next">${last ? "Let's go!" : 'Next'}</button>
+        ${last ? '' : '<button class="linkish" id="skip">Skip</button>'}
+      </div>
+    </div>`);
+  const done = () => { p.introSeen = true; save(); showHome(); };
+  document.getElementById('next').onclick = () => last ? done() : showKidTour(p, i + 1);
+  const sk = document.getElementById('skip'); if (sk) sk.onclick = done;
+}
 
 /* ----- First-run setup for grown-ups (spec: docs/superpowers/specs/2026-11-17-first-run-design.md) ----- */
 const isTouchDevice = () => navigator.maxTouchPoints > 1;
