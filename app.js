@@ -983,6 +983,20 @@ function loadCreature() {
   if (!creatureMod) creatureMod = import('./creature.js' + (ASSET_Q ? '?' + ASSET_Q : '')).catch(() => null);
   return creatureMod;
 }
+/* =========================================================
+   Adventure map (spec: docs/superpowers/specs/2026-11-17-adventure-map-design.md)
+   Rules: adventure-rules.js. Drawing: adventure.js, loaded when a map or boss shows.
+   ========================================================= */
+const AR = window.AdventureRules;   // missing only in a mixed-version boot: the app then stays on Free practice
+let advMod = null, advModP = null;
+function loadAdventureMod() {
+  if (!advModP) advModP = import('./adventure.js' + (ASSET_Q ? '?' + ASSET_Q : '')).then(m => (advMod = m)).catch(() => { advModP = null; return null; });
+  return advModP;
+}
+let homeScreen = 'practice';   // 'map' or 'practice': where Home / Back goes
+let pendingHop = null;         // stop index the token hops from on the next map draw
+let typingStop = null;         // stop index while a typing stop is being played
+const goHome = () => (homeScreen === 'map' && AR ? showMap : showHome)();
 let POOL_KEYS = null;
 function petMastered(p) {
   if (!POOL_KEYS) POOL_KEYS = new Set(Object.values(POOLS).flat());
@@ -1478,7 +1492,7 @@ function showEditProfile(existing, after) {
     const ug = document.getElementById('unlockGrade');
     if (ug) ug.onclick = () => { sel.name = nm.value; showParentGate(() => { applyTheme(sel.theme); draw(); }, () => { applyTheme(sel.theme); draw(); }); };
     $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; if (el.dataset.level === 'social') draw(); }; });
-    document.getElementById('back').onclick = () => after ? after() : existing ? showHome() : showProfiles();
+    document.getElementById('back').onclick = () => after ? after() : existing ? goHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
     const dp = document.getElementById('delP');
     if (dp) dp.onclick = () => {
@@ -1502,7 +1516,7 @@ function showEditProfile(existing, after) {
         && on !== SR.defaultOn(sid, levels[sid] || sel.grade)));
       if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels, subjects });
       else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; p.subjects = subjects; state.profiles.push(p); state.current = p.id; }
-      save(); after ? after() : showHome();
+      save(); after ? after() : goHome();
     };
   };
   draw();
@@ -1511,6 +1525,7 @@ function showEditProfile(existing, after) {
 /* ----- Home ----- */
 function showHome() {
   const p = me(); if (!p) return showProfiles();
+  homeScreen = 'practice';
   const th = theme(p);
   applyTheme(p.theme);
   const visible = subjectsFor(p);
@@ -1671,7 +1686,7 @@ function showHatch() {
         </div>
         <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="hatch">Keep my egg 🥚</button></div>` : ''}
       </div>`);
-    document.getElementById('back').onclick = showHome;
+    document.getElementById('back').onclick = goHome;
     bindAll('[data-sp]', el => { const nmEl = document.getElementById('petName'); if (nmEl) { const prev = pick && PR.SPECIES[pick].defaultName; name = nmEl.value === prev ? '' : nmEl.value; } pick = el.dataset.sp; draw(); });
     const h = document.getElementById('hatch');
     if (h) h.onclick = () => {
@@ -1723,7 +1738,7 @@ function showDen() {
         : `<span class="swatch locked" role="img" aria-label="Locked color: unlocks at the next stage"></span>`).join('')}</div>
         ${colors < 10 ? `<p class="muted" style="margin:6px 0 0">${esc(pet.name)} gets 2 new colors at each new stage.</p>` : ''}</div>
     </div>`);
-  document.getElementById('back').onclick = showHome;
+  document.getElementById('back').onclick = goHome;
   const el = document.getElementById('petView');
   let view = null, loaded = false;
   const drawnSpecies = pet.species;
@@ -1769,7 +1784,7 @@ function showJournal(promptIdx) {
         <div class="muted">${esc(e.date)} · ${esc(e.prompt)}</div><p>${esc(e.text)}</p></div>`).join('')}</div>` : ''}
   `);
   bindSay();
-  document.getElementById('back').onclick = showHome;
+  document.getElementById('back').onclick = goHome;
   document.getElementById('another').onclick = () => showJournal(idx + 1);
   document.getElementById('saveJ').onclick = () => {
     const text = document.getElementById('jt').value.trim();
@@ -1798,7 +1813,7 @@ function showCollection() {
         : `<div class="collect locked"><span class="e">${e}</span><span class="n">???</span></div>`).join('')}
     </div>
   `);
-  document.getElementById('back').onclick = showHome;
+  document.getElementById('back').onclick = goHome;
 }
 
 /* ----- Play ----- */
@@ -1835,7 +1850,7 @@ function showLearn(missionId) {
     <div class="row-actions" style="margin-top:22px"><button class="btn" id="go">I'm ready! ${theme(p).icon}</button></div>
   `);
   bindSay();
-  document.getElementById('back').onclick = showHome;
+  document.getElementById('back').onclick = goHome;
   document.getElementById('go').onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} beginMission(missionId); };
 }
 
@@ -1926,7 +1941,7 @@ function drawPlay() {
     setTimeout(() => hear('all'), 350);
   }
   if (q.order) { document.getElementById('checkOrder').onclick = checkOrder; drawOrder(); }
-  document.getElementById('quit').onclick = () => { game = null; stopAudio(); try { speechSynthesis.cancel(); } catch (e) {} showHome(); };
+  document.getElementById('quit').onclick = () => { game = null; stopAudio(); try { speechSynthesis.cancel(); } catch (e) {} goHome(); };
 }
 
 function updateAnswer() {
@@ -2140,7 +2155,7 @@ function finishMission() {
   `);
   document.getElementById('again').onclick = () => startMission(missionId);
   document.getElementById('coll').onclick = showCollection;
-  document.getElementById('home').onclick = showHome;
+  document.getElementById('home').onclick = goHome;
   bindPetMoment(p);
 }
 
@@ -2228,6 +2243,29 @@ function buildQuest(p) {
   review.forEach((r, i) => out.splice(Math.min(out.length, 1 + i * 3), 0, r));
   return out.slice(0, QUEST_LEN);
 }
+/* ----- Adventure: stop picking ----- */
+// Her least-practiced mission at her level in a subject, skipping ones already on this region's path.
+function advPick(p) {
+  return (subject, taken) => {
+    let ids;
+    if (subject === 'typing') ids = TYPING_LESSONS.filter(l => !l.game).map(l => l.id).sort((a, b) => typingProgress(p, a) - typingProgress(p, b));
+    else { const v = atLevel(p, subject); ids = questMissions(p, subject).sort((a, b) => progress(v, a) - progress(v, b)); }
+    return ids.find(id => !taken.includes(id)) || ids[0] || null;
+  };
+}
+const advValid = (p, s) => s.subject === 'typing' ? !!TYPE_BY_ID[s.missionId] : questMissions(p, s.subject).includes(s.missionId);
+function ensureAdventure(p) {
+  if (!p.adventure || !AR.WORLDS[p.adventure.world]) p.adventure = AR.newAdventure(AR.WORLDS[p.theme] ? p.theme : 'space');
+  const adv = p.adventure;
+  if (!adv.picking && AR.repickStops(adv, subjectsFor(p), advPick(p), s => advValid(p, s))) { adv.updated = Date.now(); save(); }
+  return adv;
+}
+const hexColor = n => '#' + n.toString(16).padStart(6, '0');
+function advLook(p) {
+  if (!hasPet(p)) return { egg: true };
+  const sp = PR.SPECIES[p.pet.species], c = sp.patterns[p.pet.color || 0] || sp.patterns[0];
+  return { species: p.pet.species, body: hexColor(c[0]), belly: hexColor(c[1]), accent: hexColor(c[2]) };
+}
 
 const questDoneToday = p => (p.questLog || []).includes(today());
 function questStreak(p) {
@@ -2295,7 +2333,7 @@ function finishQuest() {
     </div>
   `);
   const tb = document.getElementById('typeBonus'); if (tb) tb.onclick = () => startTyping(typeNext.id);
-  document.getElementById('home').onclick = showHome;
+  document.getElementById('home').onclick = goHome;
   bindPetMoment(p);
 }
 
@@ -2389,7 +2427,7 @@ const noKeyboardNote = () => matchMedia('(pointer: coarse)').matches
   ? `<p class="muted center" style="margin:6px 0 0">⌨️ Typing works best with a real keyboard. On a tablet, tap the words to open the keyboard.</p>` : '';
 
 function startTyping(id) {
-  if (!typingAvailable(me())) return showHome();   // no keyboard here, or typing is switched off
+  if (!typingAvailable(me())) return goHome();   // no keyboard here, or typing is switched off
   const lesson = TYPE_BY_ID[id];
   if (lesson.game) return startBlaster();
   const p = me(), th = theme(p);
@@ -2420,7 +2458,7 @@ function startTyping(id) {
       ${noKeyboardNote()}
       <textarea id="typein" class="typein" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here"></textarea>
     </div>`);
-  document.getElementById('quit').onclick = showHome;
+  document.getElementById('quit').onclick = () => { typingStop = null; goHome(); };
   typingInput(c => {
     const line = t.lines[t.li], want = line[t.ci];
     if (!t.start) t.start = Date.now();
@@ -2485,7 +2523,7 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
     </div>`);
   document.getElementById('again').onclick = again;
   const coll = document.getElementById('coll'); if (coll) coll.onclick = showCollection;
-  document.getElementById('home').onclick = showHome;
+  document.getElementById('home').onclick = goHome;
   bindPetMoment(p);
 }
 
@@ -2508,7 +2546,7 @@ function startBlaster() {
       <textarea id="typein" class="typein" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here"></textarea>
     </div>`);
   const field = document.getElementById('field');
-  document.getElementById('quit').onclick = () => { g.alive = false; showHome(); };
+  document.getElementById('quit').onclick = () => { g.alive = false; goHome(); };
   const wordHtml = w => `<span class="wthing">${look.thing}</span><span class="wtext"><span class="typed">${esc(w.text.slice(0, w.typed))}</span>${esc(w.text.slice(w.typed))}</span>`;
   const hud = () => {
     document.getElementById('gscore').textContent = `⭐ ${g.score}`;
@@ -2619,7 +2657,7 @@ function showHighScores() {
       <table class="bests">${TYPING_LESSONS.filter(l => !l.game).map(l => { const b = bestLessonRun(p, l.id);
         return `<tr><td>${l.icon} ${l.name}</td><td>${b ? `<b>${b.wpm} WPM</b> <span class="muted">${b.acc}% accurate</span>` : '<span class="muted">not played yet</span>'}</td></tr>`; }).join('')}</table>
       <p class="muted" style="margin:0">Personal bests count when accuracy is 90% or higher.</p></div>`);
-  document.getElementById('back').onclick = showHome;
+  document.getElementById('back').onclick = goHome;
   document.getElementById('play').onclick = () => startTyping('type-game');
 }
 
@@ -2819,8 +2857,8 @@ function missionTitle(id) {
   return m ? m.desc : id;
 }
 function activityText(e, p) {
-  const icon = e.k === 'quest' ? '⭐' : e.k === 'journal' ? '📔' : (SUBJECTS[e.s] || {}).icon || '🎯';
-  const what = e.k === 'quest' ? "Today's Quest" : e.k === 'journal' ? 'Journal' : e.k === 'game' ? (BLASTER[p.theme] || BLASTER.space).name : missionTitle(e.id);
+  const icon = e.k === 'quest' ? '⭐' : e.k === 'journal' ? '📔' : e.k === 'boss' ? '⚔️' : (SUBJECTS[e.s] || {}).icon || '🎯';
+  const what = e.k === 'quest' ? "Today's Quest" : e.k === 'journal' ? 'Journal' : e.k === 'boss' ? `Boss: ${AR ? AR.regionName(e.id) : e.id}` : e.k === 'game' ? (BLASTER[p.theme] || BLASTER.space).name : missionTitle(e.id);
   const score = e.k === 'journal' ? plural(e.r, 'word') : e.k === 'typing' ? `${e.r} WPM, ${e.n}% accurate` : e.k === 'game' ? `score ${e.r}` : `${e.r}/${e.n} first try`;
   return `${icon} <b>${esc(what)}</b> · ${score}${e.sec >= 60 ? ` · ${Math.round(e.sec / 60)} min` : ''}`;
 }
@@ -2881,6 +2919,13 @@ function showAddChild() {
   draw();
 }
 
+function adventureLine(p) {
+  const adv = p.adventure;
+  if (!AR || !adv || !AR.WORLDS[adv.world]) return '';
+  const w = AR.WORLDS[adv.world], stops = logSince(p, 7).filter(e => e.a === 'stop').length;
+  const where = adv.picking ? `finished the ${w.name} world` : `${esc(w.regions[adv.region].name)} (region ${adv.region + 1} of ${AR.REGIONS})`;
+  return `<p class="muted gu-note">🗺️ Adventure: ${esc(w.name)} world · ${where} · ${plural(stops, 'stop')} this week</p>`;
+}
 function showParentDetail(id, journalShown = 5) {
   const p = state.profiles.find(x => x.id === id);
   if (!p) return showParents();
@@ -2894,7 +2939,7 @@ function showParentDetail(id, journalShown = 5) {
     <div class="gu-head"><span class="gu-av">${p.avatar}</span><div><h1 style="margin:0">${esc(p.name)}</h1><span class="muted">${esc(levelsText(p))} · ${THEMES[p.theme].name}</span></div></div>
 
     <section class="card stack"><h2>Last 2 weeks</h2>${dayDots(p, 14)}
-      <p class="muted gu-note">🔥 ${streakOf(p)}-day streak · ⭐ ${plural(questsThisWeek(p), 'daily quest')} this week · last played ${p.lastDay ? esc(dayName(p.lastDay, true)) : 'never'}${recent.length ? ` · ${plural(recent.filter(e => e.k !== 'journal').length, 'activity')}, about ${minutesOf(recent)} min in 2 weeks` : ''}</p></section>
+      <p class="muted gu-note">🔥 ${streakOf(p)}-day streak · ⭐ ${plural(questsThisWeek(p), 'daily quest')} this week · last played ${p.lastDay ? esc(dayName(p.lastDay, true)) : 'never'}${recent.length ? ` · ${plural(recent.filter(e => e.k !== 'journal').length, 'activity')}, about ${minutesOf(recent)} min in 2 weeks` : ''}</p>${adventureLine(p)}</section>
 
     <section class="card stack"><h2>Subjects</h2>
       ${SUBJECT_ORDER.map(sid => `<details class="gu-subject"><summary><span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name} <span class="muted">${gradeName(levelOf(p, sid))}</span>${offTag(p, sid)}</span><span class="gu-sumbar">${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}</span></summary>
@@ -3044,6 +3089,7 @@ function mergePlayer(a, b) {
   }
   const pet = PR.mergePet(a.pet, b.pet);
   if (pet) m.pet = pet; else delete m.pet;
+  if (AR) { const adv = AR.mergeAdventure(a.adventure, b.adventure); if (adv) m.adventure = adv; else delete m.adventure; }
   if (a.introSeen || b.introSeen) m.introSeen = true; else delete m.introSeen;
   if (!a.pickLook || !b.pickLook) delete m.pickLook;
   delete m.dirty;
