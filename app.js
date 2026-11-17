@@ -72,6 +72,25 @@ function toast(msg) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
+// A recovery code with a copy button. One click handler (below) serves every copy button on any screen.
+const COPY_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const codeRowHtml = code => `<div class="code-row"><div class="code">${esc(code)}</div>
+  <button type="button" class="copy-code" data-code="${esc(code)}" aria-label="Copy recovery code">${COPY_ICON}<span>Copy</span></button></div>`;
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.copy-code');
+  if (!btn) return;
+  try { await navigator.clipboard.writeText(btn.dataset.code); }
+  catch (err) { // no clipboard access: select the code so the grown-up can copy it by hand
+    const el = btn.parentElement.querySelector('.code'), r = document.createRange();
+    r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    toast('Press and hold the code to copy it'); return;
+  }
+  btn.classList.add('copied'); btn.innerHTML = CHECK_ICON + '<span>Copied</span>';
+  toast('Recovery code copied');
+  clearTimeout(btn._t); btn._t = setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = COPY_ICON + '<span>Copy</span>'; }, 2000);
+});
+
 function applyTheme(id) {
   document.body.dataset.theme = id;
   const sky = document.getElementById('sky');
@@ -3102,7 +3121,7 @@ function syncCardHtml() {
   if (!SYNC_URL) return '';
   const s = state.sync;
   const rec = s.pendingRecovery ? `<div class="recovery-box"><b>📝 Write down your recovery code</b>
-      <div class="code">${esc(s.pendingRecovery)}</div>
+      ${codeRowHtml(s.pendingRecovery)}
       <span class="muted">If you ever forget your password, this code lets you set a new one. It won't be shown again.</span>
       <div><button class="btn small" id="recDone">I wrote it down</button></div></div>` : '';
   if (s.token) {
@@ -3318,7 +3337,7 @@ function showSetupFamily() {
 function showSetupRecovery(code) {
   setupLayout(`<h2>Write down your recovery code</h2>
     <p class="muted">If you ever forget the password, this code lets you set a new one. It won't be shown again.</p>
-    <div class="recovery-box"><div class="code">${esc(code)}</div></div>
+    <div class="recovery-box">${codeRowHtml(code)}</div>
     <div class="setup-actions"><button class="btn big-btn" id="go">I wrote it down</button></div>`, stepInfo('recovery'));
   document.getElementById('go').onclick = () => { delete state.sync.pendingRecovery; writeStore(); showSetupKids(); };
 }
