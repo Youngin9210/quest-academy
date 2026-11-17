@@ -580,15 +580,23 @@ const SUBJECTS = window.SUBJECTS || {};
 SUBJECTS.math = { name: 'Math', icon: '🔢', builtIn: true };
 SUBJECTS.typing = { name: 'Typing', icon: '⌨️', builtIn: true };
 const SUBJECT_ORDER = ['math', 'reading', 'writing', 'science', 'social', 'typing'].filter(id => SUBJECTS[id]);
-// subject-rules.js failed to load (mixed-version boot): every subject on
-const SR = window.SubjectRules || { subjectOn: () => true, questRotation: r => r };
+// subject-rules.js failed to load (mixed-version boot): same defaults as subject-rules.js (Social Studies off
+// at level 2 and below, everything else on), honoring any saved switches
+const SR = window.SubjectRules || (() => {
+  const defaultOn = (sid, level) => !(sid === 'social' && level <= 2);
+  const subjectOn = (p, sid, level) => sid === 'math' || (p && p.subjects && typeof p.subjects[sid] === 'boolean' ? p.subjects[sid] : defaultOn(sid, level));
+  const setSwitch = (subjects, sid, on, level) => { const o = { ...(subjects || {}) }; if (on === defaultOn(sid, level)) delete o[sid]; else o[sid] = on; return o; };
+  return { defaultOn, subjectOn, setSwitch, questRotation: (r, v) => { const o = r.filter(x => v.includes(x)); return o.length ? o : ['math']; } };
+})();
 
 // Typing needs a real keyboard: a computer (or iPad with a trackpad), or a device where a key was
 // pressed outside a text field (the iPad on-screen keyboard only opens for a text field). Device-local.
 const KEYBOARD_KEY = 'qa.keyboard';
 let keyboardSeen = false;
 try { keyboardSeen = localStorage.getItem(KEYBOARD_KEY) === '1'; } catch (e) { /* storage blocked */ }
-const finePointer = () => !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
+// a mouse or trackpad anywhere (any-*: an iPad with a Magic Keyboard reports its trackpad here)
+const mq = q => !!(window.matchMedia && matchMedia(q).matches);
+const finePointer = () => mq('(hover: hover) and (pointer: fine)') || mq('(any-pointer: fine)') || mq('(any-hover: hover)');
 const hasKeyboard = () => keyboardSeen || finePointer();
 document.addEventListener('keydown', e => {
   if (keyboardSeen) return;
@@ -597,7 +605,11 @@ document.addEventListener('keydown', e => {
   const before = hasKeyboard();
   keyboardSeen = true;
   try { localStorage.setItem(KEYBOARD_KEY, '1'); } catch (e2) { /* storage blocked */ }
-  if (!before && screen === 'home' && !game && me()) showHome();   // the Typing tab appears
+  if (before) return;
+  // Tab/Space/Enter on a button is moving or pressing: don't redraw under it; the next home draw shows Typing
+  if (t && t.closest && t.closest('button, a, [role=button]') && (e.key === 'Tab' || e.key === ' ' || e.key === 'Enter')) return;
+  // redraw after this key event is done, so its own handlers see the screen they were pressed on
+  setTimeout(() => { if (screen === 'home' && !game && me()) showHome(); }, 0);   // the Typing tab appears
 });
 
 // The subjects she sees: the grown-up's switches (or the defaults), and Typing only with a keyboard. Math is always on.
@@ -1360,7 +1372,7 @@ function howItWorksHtml() {
       <li><b>Or pick a subject and a mission</b> that matches this week's homework. "Try me!" marks the one she's practiced least.</li>
       <li><b>Missed questions come back</b> a few questions later and keep showing up until they stick. Hints help first; the answer shows after a second miss.</li>
       <li><b>Above, for each child:</b> which days she played, what she's stuck on, progress per subject and her latest activity. "See details" has every mission, mistakes, typing keys, two weeks of activity and her journal.</li>
-      <li><b>Typing</b> works best with a real keyboard. <b>Spelling</b> plays real people saying each word.</li>
+      <li><b>Typing</b> needs a real keyboard. Typing shows on computers, and on iPads once a keyboard key is pressed on the home screen. <b>Spelling</b> plays real people saying each word.</li>
       ${SYNC_URL ? '<li><b>More than one device?</b> Sign in to your family account on each one (below). Progress syncs, and each device keeps working offline.</li>' : ''}
       <li><b>On an iPad,</b> add the app to the Home Screen (Share → Add to Home Screen) and always play from that icon.</li>
     </ul>
@@ -1414,9 +1426,9 @@ function showEditProfile(existing, after) {
           <span class="lbl" id="lblSubjects">Subjects</span>
           <p class="muted" style="margin:0 0 8px">Turn off a subject your child isn't studying yet. Progress is kept.</p>
           <div class="pick-row subject-switches" role="group" aria-labelledby="lblSubjects">
-            ${SUBJECT_ORDER.filter(sid => sid !== 'math').map(sid => `<button class="pick subject-switch" type="button" data-subj="${sid}" aria-pressed="${selOn(sid)}"><span aria-hidden="true">${SUBJECTS[sid].icon}</span> ${SUBJECTS[sid].name} <span class="sw-state">${selOn(sid) ? 'On' : 'Off'}</span></button>`).join('')}
+            ${SUBJECT_ORDER.filter(sid => sid !== 'math').map(sid => `<button class="pick subject-switch" type="button" data-subj="${sid}" aria-pressed="${selOn(sid)}"><span aria-hidden="true">${SUBJECTS[sid].icon}</span> ${SUBJECTS[sid].name} <span class="sw-state" aria-hidden="true">${selOn(sid) ? 'On' : 'Off'}</span></button>`).join('')}
           </div>
-          ${SUBJECTS.typing ? '<p class="muted" style="margin:6px 0 0;font-size:.95rem">Typing shows only on a computer, or an iPad with a keyboard connected.</p>' : ''}
+          ${SUBJECTS.typing ? '<p class="muted" style="margin:6px 0 0;font-size:.95rem">Typing shows on computers, and on iPads once a keyboard key is pressed on the home screen.</p>' : ''}
         </div>` : ''}
         ${grownupUnlocked() ? `<details class="levels" ${Object.keys(sel.levels).length ? 'open' : ''}>
           <summary>Different level for some subjects?</summary>
@@ -1438,7 +1450,12 @@ function showEditProfile(existing, after) {
     bindAll('[data-theme]', el => { sel.theme = el.dataset.theme; applyTheme(sel.theme); draw(); });
     bindAll('[data-av]', el => { sel.avatar = el.dataset.av; draw(); });
     bindAll('[data-grade]', el => { sel.grade = +el.dataset.grade; draw(); });
-    bindAll('[data-subj]', el => { sel.subjects[el.dataset.subj] = !selOn(el.dataset.subj); draw(); });
+    bindAll('[data-subj]', el => {
+      const sid = el.dataset.subj;
+      sel.subjects = SR.setSwitch(sel.subjects, sid, !selOn(sid), sel.levels[sid] || sel.grade);   // matching the default = not stored
+      draw();
+      const again = $app.querySelector(`[data-subj="${sid}"]`); if (again) again.focus();
+    });
     const ug = document.getElementById('unlockGrade');
     if (ug) ug.onclick = () => { sel.name = nm.value; showParentGate(() => { applyTheme(sel.theme); draw(); }, () => { applyTheme(sel.theme); draw(); }); };
     $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; if (el.dataset.level === 'social') draw(); }; });
@@ -1462,7 +1479,8 @@ function showEditProfile(existing, after) {
       if (!name) { toast('Type your name first!'); nm.focus(); return; }
       const levels = Object.fromEntries(Object.entries(sel.levels).filter(([, g]) => g !== sel.grade));
       // only switches a grown-up changed are stored; the rest keep following the default for her grade
-      const subjects = Object.fromEntries(Object.entries(sel.subjects).filter(([sid, on]) => sid !== 'math' && typeof on === 'boolean'));
+      const subjects = Object.fromEntries(Object.entries(sel.subjects).filter(([sid, on]) => sid !== 'math' && typeof on === 'boolean'
+        && on !== SR.defaultOn(sid, levels[sid] || sel.grade)));
       if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels, subjects });
       else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; p.subjects = subjects; state.profiles.push(p); state.current = p.id; }
       save(); after ? after() : showHome();
@@ -1576,6 +1594,8 @@ function petGoal(p) {
   return { icon: pr.stage === 0 ? '🥚' : '⭐', text: `${plural(pr.toNext, 'more mastered question')} to ${goal}!`, pct,
     count: `${Math.max(0, pr.mastered - from)} of ${to - from}` };
 }
+// a locked gear item's hint; gear for a subject that's off for her says so (unlock rules are unchanged)
+const gearHow = (p, it) => it.subject && SUBJECTS[it.subject] && !subjectOnFor(p, it.subject) ? `Unlocks with ${SUBJECTS[it.subject].name}` : it.how;
 function petProgressText(p) { return petGoal(p).text; }
 const petBar = pct => `<span class="pet-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>`;
 function petCardHtml(p) {
@@ -1676,7 +1696,7 @@ function showDen() {
               <span class="wt-state wt-off">Tap to wear</span><span class="wt-state wt-on">✓ Wearing</span></button>`
           : `<div class="ward-tile locked">
               <span class="wt-icon" aria-hidden="true">${it.icon}</span><span class="wt-lock" aria-hidden="true">🔒</span>
-              <span class="wt-name">${esc(it.name)}</span><span class="wt-how">${esc(it.how)}</span>
+              <span class="wt-name">${esc(it.name)}</span><span class="wt-how">${esc(gearHow(p, it))}</span>
               ${it.streak ? `${petBar(Math.round(Math.min(1, streak / it.streak) * 100))}<span class="wt-count">${Math.min(streak, it.streak)} of ${it.streak} days</span>` : ''}</div>`).join('')}</div></div>`;
       }).join('')}
       <div><span class="lbl">Colors</span><div class="swatches">${sp.patterns.map((c, i) => i < colors
@@ -2869,7 +2889,7 @@ function showParentDetail(id, journalShown = 5) {
           const keys = Object.keys(p.stats).filter(k => missionOf(k) === m.id);
           const r = keys.reduce((a, k) => a + p.stats[k].r, 0), w = keys.reduce((a, k) => a + p.stats[k].w, 0);
           return `<tr><td>${esc(m.name)}</td><td>${(p.missions[m.id] || { plays: 0 }).plays}</td><td>${r + w ? Math.round(r / (r + w) * 100) + '%' : '—'}</td><td class="gu-cellbar">${masteryBar(Math.round(mastery(p, m.id) * 100), m.name)}</td></tr>`;
-        }).join('')}</table></div></details>`).join('')}
+        }).join('')}</table></div>${sid === 'typing' ? '<p class="muted gu-note">Typing shows on computers, and on iPads once a keyboard key is pressed on the home screen.</p>' : ''}</details>`).join('')}
     </section>
 
     <section class="card stack"><h2>Stuck on</h2>
@@ -2968,7 +2988,7 @@ async function syncCall(body) {
     body: JSON.stringify({ token: state.sync.token, ...body }), cache: 'no-store' });
   const j = await r.json().catch(() => ({ error: 'Server error' }));
   if (r.status === 401 && state.sync.token) { state.sync.token = ''; writeStore(); }   // this device was signed out
-  if (!r.ok) throw new Error(j.error || 'Sync failed');
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Sync failed'), { status: r.status });
   return j;
 }
 
@@ -3112,6 +3132,9 @@ function syncCardHtml() {
         <label class="lbl" style="margin-top:14px">New recovery code</label>
         <input class="text" id="recPw" type="password" placeholder="Your password" autocomplete="current-password">
         <button class="btn small" id="doRec">Show a new recovery code</button>
+        ${s.admin ? '' : `<label class="lbl" style="margin-top:14px">Delete our family account</label>
+        <p class="muted" style="margin:0 0 8px">Deletes all players and progress on every device, and the family account.</p>
+        <button class="btn ghost small danger" id="delFam" type="button">Delete our family account</button>`}
       </details></div>`;
   }
   return `<div class="card stack" id="acct"><h2>☁️ Sign in to your family</h2>
@@ -3184,6 +3207,47 @@ function bindSyncCard(rerender) {
   if ($('doRec')) $('doRec').onclick = () => act(async () => {
     const r = await syncCall({ action: 'new_recovery', password: val('recPw') }); state.sync.pendingRecovery = r.recovery; writeStore(); rerender();
   });
+  if ($('delFam')) $('delFam').onclick = () => showDeleteFamily(rerender);
+}
+
+// Delete the family account (needs the password): everything on the server goes, then this device starts fresh.
+function showDeleteFamily(back) {
+  applyTheme('space');
+  render(`<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
+    <div class="card stack gate" style="max-width:480px;margin:0 auto"><h2>Delete our family account?</h2>
+    <p style="margin:0">This deletes <b>${esc(state.sync.family || 'your family')}</b>: all players and progress on every device, and the family account. This can't be undone.</p>
+    <form id="dff" class="stack" autocomplete="on">
+      <input type="text" name="username" autocomplete="username" value="${esc(state.sync.family || '')}" hidden>
+      <label class="lbl" for="dfPw">Family password</label>
+      <input class="text" id="dfPw" type="password" autocomplete="current-password">
+      <p class="form-error" id="dfErr" role="alert" hidden></p>
+      <div class="row-actions" style="justify-content:flex-start">
+        <button class="btn ghost danger" type="submit">Delete everything</button>
+        <button class="btn ghost" type="button" id="dfCancel">Cancel</button></div>
+    </form></div>`);
+  focusHeading();
+  document.getElementById('back').onclick = back;
+  document.getElementById('dfCancel').onclick = back;
+  document.getElementById('dff').onsubmit = async e => {
+    e.preventDefault();
+    const form = e.target, btn = form.querySelector('button[type=submit]'); if (btn.disabled) return;
+    clearErrors(form);
+    if (!document.getElementById('dfPw').value) return formError('dfErr', 'Enter your family password.', ['dfPw']);
+    btn.disabled = true;
+    try { await syncCall({ action: 'delete_family', password: document.getElementById('dfPw').value }); }
+    catch (err) {
+      btn.disabled = false;
+      return formError('dfErr', isOffline(err) ? "You're offline. Connect to the internet to delete your family account." : err.message, err.status === 403 ? ['dfPw'] : []);
+    }
+    clearTimeout(syncTimer);
+    state.profiles = []; state.current = null;
+    state.sync = { token: '', family: '', admin: false, last: 0, tombs: [], ok: 0 };
+    delete state.grownPin;
+    Object.keys(snapshot).forEach(k => delete snapshot[k]);
+    grownupUntil = 0;
+    writeStore(); toast('Your family account was deleted');
+    showProfiles();   // nothing left on this device: the welcome
+  };
 }
 
 /* ----- Invite link: create a family account ----- */
@@ -3228,7 +3292,8 @@ function showSetupFamily() {
       <input class="text" id="fPw" type="password" placeholder="8+ characters" autocomplete="new-password">
       <label class="lbl" for="fPw2">Password again</label>
       <input class="text" id="fPw2" type="password" autocomplete="new-password">
-      <p class="muted" style="margin:0">🔒 Only first names, game progress and journal writing are stored. No emails.</p>
+      <p class="muted" style="margin:0">🔒 Only first names, game progress and journal writing are stored. No emails.
+        You can delete your family account any time from the Grown-ups page.</p>
       <p class="form-error" id="fErr" role="alert" hidden></p>
       <div class="setup-actions"><button class="btn big-btn" type="submit">Create our family</button></div>
     </form>
@@ -3246,7 +3311,7 @@ function showSetupFamily() {
       await signedIn(r, () => {}); unlockGrownup(); clearInvite();
       setup.path = 'account';
       showSetupRecovery(r.recovery);
-    } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message, isOffline(err) ? [] : ['fName']); }
+    } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message, isOffline(err) || err.status === 429 ? [] : ['fName']); }
   };
 }
 
