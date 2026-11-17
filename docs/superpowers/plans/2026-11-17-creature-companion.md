@@ -178,7 +178,7 @@ test('cleanName', () => {
 
 - [ ] **Step 2: Run the tests to see them fail**
 
-Run: `node --test tests/`
+Run: `node --test 'tests/*.test.js'`
 Expected: FAIL with `Cannot find module '../pet-rules.js'`.
 
 - [ ] **Step 3: Write `pet-rules.js`**
@@ -303,7 +303,7 @@ Expected: FAIL with `Cannot find module '../pet-rules.js'`.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
-Run: `node --test tests/`
+Run: `node --test 'tests/*.test.js'`
 Expected: all 12 tests pass, `# fail 0`.
 
 - [ ] **Step 5: Load it in the page and keep tests off the server**
@@ -949,7 +949,7 @@ Reload the preview (unregister the service worker first: `navigator.serviceWorke
 ```
 Expected: `{ mastered: 2, added: ['scarf','cape'], again: [], look: { species:'fox', stage:0, color:0, wear:{head:null,neck:null,back:null}, ground:'ocean' } }`.
 
-Check `read_console_messages` with `onlyErrors: true` → none. Also run `node --test tests/` → still passing.
+Check `read_console_messages` with `onlyErrors: true` → none. Also run `node --test 'tests/*.test.js'` → still passing.
 
 - [ ] **Step 7: Commit**
 
@@ -1340,7 +1340,7 @@ Expected: `[true, true, true]`.
 
 - [ ] **Step 3: Full pass**
 
-- `node --test tests/` → all pass.
+- `node --test 'tests/*.test.js'` → all pass.
 - Fresh player (no pet): home shows the egg card; finishing a mission shows no moment; no errors.
 - Test player: home card, den (drag turns, tap hops with hearts), gear and colors, moments, Grown-ups line, reset.
 - Reduced motion: `resize_window` can't set it, so check with `javascript_tool`: temporarily run `window.matchMedia = q => ({ matches: q.includes('reduce'), addEventListener() {}, removeEventListener() {} })` before opening the den; the creature is still until tapped; a tap gives a small hop with no hearts.
