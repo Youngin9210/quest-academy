@@ -22,13 +22,18 @@
     (q.get('wear') || '').split(',').filter(Boolean).forEach(id => { wear[PetRules.ITEM_BY_ID[id].slot] = id; });
     const color = +(q.get('color') || 0), ground = q.get('ground') || 'space';
     const grid = document.getElementById('g');
+    const frames = n => new Promise(r => { const step = () => (n-- > 0 ? requestAnimationFrame(step) : r()); step(); });
+    // one WebGL context at a time (browsers keep ~16): mount, snapshot, dispose, next
     for (const species of PetRules.SPECIES_ORDER) for (let stage = 0; stage < 5; stage++) {
       const f = document.createElement('figure');
       f.innerHTML = `<div class="v"></div><figcaption>${species} · ${PetRules.STAGES[stage].name}</figcaption>`;
       grid.appendChild(f);
-      const v = mountCreature(f.querySelector('.v'), { species, stage, color, wear, ground }, { interactive: false, reducedMotion: true, preserve: true });
-      // keep one frame as an image, then free the WebGL context
-      setTimeout(() => { const c = f.querySelector('canvas'), img = new Image(); img.src = c.toDataURL(); img.style.width = '100%'; v.dispose(); f.querySelector('.v').appendChild(img); }, 300);
+      const box = f.querySelector('.v');
+      const v = mountCreature(box, { species, stage, color, wear, ground }, { interactive: false, reducedMotion: true, preserve: true });
+      await frames(2);
+      const img = new Image(); img.src = box.querySelector('canvas').toDataURL(); img.style.width = '100%';
+      v.dispose();
+      box.appendChild(img);
     }
   </script>
 </body>

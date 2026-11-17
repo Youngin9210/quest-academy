@@ -36,6 +36,7 @@ function sprite(tex, size, opacity = 1, additive = false) {
     blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending }));
   s.scale.set(size, size, 1); return s;
 }
+const shared = t => { t.userData.shared = true; return t; };   // survives disposeTree, freed with the mount
 const glowTex = color => canvasTexture(g => {
   const r = g.createRadialGradient(32, 32, 2, 32, 32, 32), c = '#' + color.toString(16).padStart(6, '0');
   r.addColorStop(0, c); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64);
@@ -59,7 +60,7 @@ function buildEgg(colors) {
   return { group: g, eyes: [], anchors: null };
 }
 
-function buildCreature(look) {
+function buildCreature(look, tex) {
   const sp = R.SPECIES[look.species], colors = sp.patterns[look.color] || sp.patterns[0];
   if (look.stage === 0) return buildEgg(colors);
   const [body, belly, accent] = colors, st = look.stage, hr = HEAD_R[st];
@@ -78,20 +79,19 @@ function buildCreature(look) {
     if (st >= 2) g.add(at(ball(BODY_R * 0.22, body, 1, 1.4, 1), s * BODY_R * 0.95, BODY_Y, BODY_R * 0.25)); // arms
   }
   const a = { headY, hr, neckY: BODY_Y + BODY_R * 0.8 };
-  SPECIES_PARTS[look.species](g, a, { body, belly, accent }, st);
+  SPECIES_PARTS[look.species](g, a, { body, belly, accent }, st, tex);
   if (st === 4) {
-    const glow = at(sprite(glowTex(accent), 2.4, 0.5, true), 0, BODY_Y + 0.2, -0.5);
-    glow.userData.glow = true; g.add(glow);
+    g.add(at(sprite(glowTex(accent), 2.4, 0.5, true), 0, BODY_Y + 0.2, -0.5));
   }
   return { group: g, eyes, anchors: a };
 }
 
-function sparkleAt(g, x, y, z, size = 0.14) {
-  const s = at(sprite(sparkleTex(), size, 0.9, true), x, y, z); s.userData.twinkle = Math.random() * 6; g.add(s);
+function sparkleAt(g, tex, x, y, z, size = 0.14) {
+  const s = at(sprite(tex.sparkle, size, 0.9, true), x, y, z); s.userData.twinkle = Math.random() * 6; g.add(s);
 }
 
 const SPECIES_PARTS = {
-  dragon(g, a, c, st) {
+  dragon(g, a, c, st, tex) {
     const { headY, hr } = a;
     g.add(at(ball(hr * 0.45, c.belly, 1.1, 0.7, 0.8), 0, headY - hr * 0.28, hr * 0.78));             // snout
     for (const s of [-1, 1]) {
@@ -105,9 +105,9 @@ const SPECIES_PARTS = {
     const tail = at(cone(BODY_R * 0.3, BODY_R * 1.4, c.body), 0, 0.22, -BODY_R * 1.1);
     tail.rotation.x = -Math.PI / 2 - 0.45; g.add(tail);
     if (st >= 3) [0.2, 0.45, 0.7].forEach(t => g.add(at(cone(0.05, 0.12, c.accent), 0, BODY_Y + BODY_R * (1 - t) * 0.9, -BODY_R * (0.75 + t * 0.2))));
-    if (st === 4) [[0, 0.1, -0.95], [0.1, 0.18, -1.15], [-0.08, 0.05, -1.3]].forEach(p => sparkleAt(g, ...p));
+    if (st === 4) [[0, 0.1, -0.95], [0.1, 0.18, -1.15], [-0.08, 0.05, -1.3]].forEach(p => sparkleAt(g, tex, ...p));
   },
-  fox(g, a, c, st) {
+  fox(g, a, c, st, tex) {
     const { headY, hr } = a;
     g.add(at(ball(hr * 0.4, c.belly, 1, 0.75, 1.2), 0, headY - hr * 0.3, hr * 0.78));                // snout
     g.add(at(ball(hr * 0.09, DARK), 0, headY - hr * 0.2, hr * 1.25));                                  // nose
@@ -120,20 +120,20 @@ const SPECIES_PARTS = {
     const big = st >= 3 ? 1.2 : 1;
     const tail = at(ball(BODY_R * 0.45 * big, c.body, 0.8, 0.8, 1.8), 0, BODY_Y, -BODY_R * 1.25); tail.rotation.x = 0.6; g.add(tail);
     g.add(at(ball(BODY_R * 0.28 * big, c.belly, 1, 1, 1.2), 0, BODY_Y + 0.25 * big, -BODY_R * 1.8));
-    if (st === 4) [[0, 0.75, -0.85], [0.08, 0.6, -1.0], [-0.06, 0.9, -0.95]].forEach(p => sparkleAt(g, ...p));
+    if (st === 4) [[0, 0.75, -0.85], [0.08, 0.6, -1.0], [-0.06, 0.9, -0.95]].forEach(p => sparkleAt(g, tex, ...p));
   },
-  axolotl(g, a, c, st) {
+  axolotl(g, a, c, st, tex) {
     const { headY, hr } = a;
     const smile = at(new THREE.Mesh(new THREE.TorusGeometry(hr * 0.25, hr * 0.03, 8, 16, Math.PI), mat(DARK)), 0, headY - hr * 0.22, hr * 0.94);
     smile.rotation.z = Math.PI; g.add(smile);
     for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
       const f = at(capsule(hr * 0.07, hr * (st >= 3 ? 0.55 : 0.42), c.accent), s * hr * 0.98, headY + (i - 1) * hr * 0.3, -0.02);
       f.rotation.z = s * (1.2 - (i - 1) * 0.5); g.add(f);
-      if (st === 4) sparkleAt(g, s * hr * 1.35, headY + (i - 1) * hr * 0.42, 0, 0.1);
+      if (st === 4) sparkleAt(g, tex, s * hr * 1.35, headY + (i - 1) * hr * 0.42, 0, 0.1);
     }
     const fin = at(ball(BODY_R * 0.6, c.body, 0.25, 0.9, 1.6), 0, BODY_Y - 0.05, -BODY_R * 1.1); g.add(fin);
   },
-  bunnycat(g, a, c, st) {
+  bunnycat(g, a, c, st, tex) {
     const { headY, hr } = a;
     g.add(at(ball(hr * 0.08, 0xff8fab), 0, headY - hr * 0.12, hr * 0.98));                              // nose
     const earLen = hr * (st >= 3 ? 0.95 : 0.75);
@@ -149,7 +149,7 @@ const SPECIES_PARTS = {
       }
     }
     g.add(at(ball(BODY_R * 0.3, c.belly), 0, BODY_Y - 0.1, -BODY_R * 0.95));                          // tail puff
-    if (st === 4) [[0.35, 1.35, 0], [-0.35, 1.4, 0]].forEach(p => sparkleAt(g, ...p, 0.12));
+    if (st === 4) [[0.35, 1.35, 0], [-0.35, 1.4, 0]].forEach(p => sparkleAt(g, tex, ...p, 0.12));
   },
 };
 
@@ -164,7 +164,8 @@ const GEAR = {
   glasses(a) {
     const g = new THREE.Group(), y = a.headY + a.hr * 0.1, z = a.hr * 0.97;
     for (const s of [-1, 1]) g.add(at(new THREE.Mesh(new THREE.TorusGeometry(a.hr * 0.18, a.hr * 0.03, 8, 20), mat(DARK)), s * a.hr * 0.38, y, z));
-    g.add(at(cyl(0.008, 0.008, a.hr * 0.4, DARK), 0, y, z)).rotation.z = Math.PI / 2;
+    const bridge = at(cyl(0.008, 0.008, a.hr * 0.4, DARK), 0, y, z);
+    bridge.rotation.z = Math.PI / 2; g.add(bridge);
     return g;
   },
   goggles(a) {
@@ -230,19 +231,27 @@ function buildGround(world) {
 
 function disposeTree(obj) {
   obj.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    if (o.geometry && !o.isSprite) o.geometry.dispose();   // sprite geometry is shared in r170
+    if (o.material) { const m = o.material.map; if (m && !m.userData.shared) m.dispose(); o.material.dispose(); }
   });
 }
 
 /* ---------- mount ---------- */
 export function mountCreature(el, look, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: !!opts.preserve });   // throws if WebGL is unavailable
+  try { return setup(renderer, el, look, opts); }
+  catch (err) {   // anything after the renderer exists must not leak a canvas or a GL context
+    renderer.domElement.remove(); renderer.dispose(); renderer.forceContextLoss();
+    throw err;
+  }
+}
+
+function setup(renderer, el, look, opts) {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   el.appendChild(renderer.domElement);
   const canvas = renderer.domElement;
-  canvas.style.display = 'block'; canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = opts.interactive ? 'none' : 'auto';
+  canvas.style.display = 'block'; canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = opts.interactive ? 'pan-y' : 'auto';
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
@@ -253,6 +262,7 @@ export function mountCreature(el, look, opts = {}) {
   const stageRoot = new THREE.Group(); scene.add(stageRoot);
   const pivot = new THREE.Group(); stageRoot.add(pivot);   // turns with dragging
   const mover = new THREE.Group(); pivot.add(mover);       // hops and bobs
+  const tex = { sparkle: shared(sparkleTex()), heart: shared(heartTex()) };   // one of each per mount
   let ground = null, creature = null, gear = [], current = null;
   const fx = new THREE.Group(); stageRoot.add(fx);         // hearts and sparkles
 
@@ -261,7 +271,7 @@ export function mountCreature(el, look, opts = {}) {
     if (!ground) { ground = buildGround(next.ground); stageRoot.add(ground); }
     if (creature) { mover.remove(creature.group); disposeTree(creature.group); }
     gear.forEach(gm => { mover.remove(gm); disposeTree(gm); }); gear = [];
-    creature = buildCreature(next);
+    creature = buildCreature(next, tex);
     creature.group.scale.setScalar(SIZE[next.stage]);
     mover.add(creature.group);
     if (creature.anchors) for (const slot of ['head', 'neck', 'back']) {
@@ -272,15 +282,19 @@ export function mountCreature(el, look, opts = {}) {
   }
   build(look);
 
+  let sizeW = 0, sizeH = 0;
   function resize() {
     const w = el.clientWidth || 200, h = el.clientHeight || 200;
+    if (w === sizeW && h === sizeH) return;
+    sizeW = w; sizeH = h;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.render(scene, camera);   // setSize clears the canvas; redraw so it is never left blank
   }
   resize();
-  const ro = new ResizeObserver(resize); ro.observe(el);
+  let ro = null, io = null;
 
   // animation state
-  let hopT = -1, spinT = -1, last = performance.now(), t = 0, nextBlink = 2 + Math.random() * 3, raf = 0, visible = true;
+  let hopT = -1, spinT = -1, last = performance.now(), t = 0, nextBlink = 2 + Math.random() * 3, raf = 0;
   const reduced = !!opts.reducedMotion;
   const floaters = [];   // { sprite, life, vy }
 
@@ -290,7 +304,7 @@ export function mountCreature(el, look, opts = {}) {
 
   function frame(now) {
     raf = 0;
-    const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now; t += dt;
     let y = 0;
     if (!reduced) {
       if (current.stage === 0) creature.group.rotation.z = Math.sin(t * 3) * 0.08 * (Math.sin(t * 0.7) > 0.3 ? 1 : 0.2);
@@ -316,14 +330,19 @@ export function mountCreature(el, look, opts = {}) {
   }
   const kick = () => { if (!raf && visible) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
-  const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting && document.visibilityState === 'visible'; if (visible) kick(); });
-  io.observe(el);
-  const onVis = () => { visible = document.visibilityState === 'visible'; if (visible) kick(); };
+  let intersecting = true, docVisible = document.visibilityState === 'visible', visible = intersecting && docVisible;
+  const syncVisible = () => { visible = intersecting && docVisible; if (visible) kick(); };
+  try {
+    ro = new ResizeObserver(resize); ro.observe(el);
+    io = new IntersectionObserver(entries => { intersecting = entries[entries.length - 1].isIntersecting; syncVisible(); });
+    io.observe(el);
+  } catch (err) { if (ro) ro.disconnect(); throw err; }
+  const onVis = () => { docVisible = document.visibilityState === 'visible'; syncVisible(); };
   document.addEventListener('visibilitychange', onVis);
 
   function pet() {
     hopT = 0;
-    if (!reduced) { const h = heartTex(); addFloater(h, -0.2, 1.3, 0.22); addFloater(h, 0.25, 1.45, 0.18, 0.5); }
+    if (!reduced) { addFloater(tex.heart, -0.2, 1.3, 0.22); addFloater(tex.heart, 0.25, 1.45, 0.18, 0.5); }
     if (opts.onPet) opts.onPet();
     kick();
   }
@@ -333,8 +352,8 @@ export function mountCreature(el, look, opts = {}) {
   const onDown = e => { down = { x: e.clientX, y: e.clientY, rot: pivot.rotation.y, moved: false }; canvas.setPointerCapture(e.pointerId); };
   const onMove = e => {
     if (!down) return;
-    const dx = e.clientX - down.x;
-    if (Math.abs(dx) > 6) down.moved = true;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) down.moved = true;
     if (down.moved) { pivot.rotation.y = down.rot + dx * 0.012; kick(); }
   };
   const onUp = () => { if (down && !down.moved) pet(); down = null; };
@@ -350,18 +369,18 @@ export function mountCreature(el, look, opts = {}) {
     celebrate(kind) {
       if (reduced) {
         canvas.style.transition = 'none'; canvas.style.opacity = '0';
-        requestAnimationFrame(() => { canvas.style.transition = 'opacity .6s'; canvas.style.opacity = '1'; });
+        void canvas.offsetWidth;   // force a style recalc so the fade-in actually transitions
+        canvas.style.transition = 'opacity .6s'; canvas.style.opacity = '1';
         kick(); return;
       }
       hopT = 0; if (kind === 'grow') spinT = 0;
-      const sp = sparkleTex();
-      for (let i = 0; i < (kind === 'grow' ? 6 : 3); i++) addFloater(sp, (Math.random() - 0.5) * 1.4, 0.4 + Math.random() * 0.9, 0.16, 0.4);
+      for (let i = 0; i < (kind === 'grow' ? 6 : 3); i++) addFloater(tex.sparkle, (Math.random() - 0.5) * 1.4, 0.4 + Math.random() * 0.9, 0.16, 0.4);
       kick();
     },
     dispose() {
       cancelAnimationFrame(raf); raf = 0; visible = false;
       ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVis);
-      disposeTree(scene);
+      disposeTree(scene); tex.sparkle.dispose(); tex.heart.dispose();
       renderer.dispose(); renderer.forceContextLoss();
       canvas.remove();
     },
