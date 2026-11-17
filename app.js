@@ -1148,6 +1148,8 @@ function showEditProfile(existing, after) {
           <button class="btn" id="saveP">${existing ? 'Save' : `Let's go! ${th.icon}`}</button>
           ${existing ? '<button class="btn ghost small" id="switch">Switch player</button>' : ''}
         </div>
+        ${existing && existing.pet && existing.pet.species && grownupUnlocked() ? `<div class="row-actions" style="justify-content:flex-start">
+          <button class="btn ghost small" id="petReset" type="button">🥚 Let ${esc(existing.name)} pick a new creature</button></div>` : ''}
         ${existing ? `<div class="row-actions" style="justify-content:flex-start">
           <button class="btn ghost small danger" id="delP" type="button">${grownupUnlocked() ? '🗑️ Delete this player' : '🔒 Delete this player (grown-ups)'}</button></div>` : ''}
       </div>
@@ -1168,6 +1170,12 @@ function showEditProfile(existing, after) {
       if (grownupUnlocked()) return del();
       sel.name = nm.value;
       showParentGate(del, () => { applyTheme(sel.theme); draw(); });
+    };
+    const pr = document.getElementById('petReset');
+    if (pr) pr.onclick = () => {
+      if (!confirm(`${existing.pet.name} goes back into an egg, and ${existing.name} picks a new creature. Gear and colors are kept. OK?`)) return;
+      existing.pet.species = null; existing.pet.wear = { head: null, neck: null, back: null }; existing.pet.updated = Date.now();
+      save(); toast('Done! A new egg is waiting.'); draw();
     };
     document.getElementById('saveP').onclick = () => {
       const name = sel.name.trim();
@@ -2489,6 +2497,7 @@ function showParents() {
       return `<section class="card gu-card" aria-label="${esc(p.name)}">
         <div class="gu-head"><span class="gu-av">${p.avatar}</span><div><h2>${esc(p.name)}</h2><span class="muted">${esc(levelsText(p))}</span></div>
           <span class="chip">🔥 ${plural(streakOf(p), 'day')}</span></div>
+        ${p.pet && p.pet.species ? `<p class="muted gu-note">${PR.SPECIES[p.pet.species].emoji} ${esc(p.pet.name)} the ${PR.SPECIES[p.pet.species].name} · ${PR.STAGES[petStage(p)].name} · ${p.pet.items.length} of ${PR.ITEMS.length} items</p>` : ''}
         <div><h3>This week</h3>${dayDots(p, 7)}
           <p class="muted gu-note">${played.length || mins ? `${plural(played.length, 'activity')}${mins ? ` · about ${mins} min` : ''} · ${plural(questsThisWeek(p), 'daily quest')}` : `${plural(questsThisWeek(p), 'daily quest')} · missions and minutes show from ${esc(state.logStart)}`}</p></div>
         <div><h3>Stuck on</h3>${stuck.length ? `<div class="facts">${stuck.map(stuckChip).join('')}</div>` : '<p class="muted gu-note">Nothing tricky right now. Nice!</p>'}</div>
