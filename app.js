@@ -1011,6 +1011,7 @@ const FR = window.FirstRun;
 function showProfiles() {
   state.current = null; writeStore();
   applyTheme('space');
+  if (state.sync.pendingRecovery && !state.profiles.length) { setup.path = 'invite'; return showSetupRecovery(state.sync.pendingRecovery); }
   const route = FR.firstScreen({ locked: !!(state.grownPin || state.sync.token), players: state.profiles.length });
   if (route === 'welcome') return showWelcome(pendingInvite());
   if (route === 'add-kids') { setup.path = state.sync.token ? 'signin' : 'local'; return showSetupKids(); }
@@ -1068,7 +1069,7 @@ function showKidTour(p, i) {
   const cards = [
     { pic: tabs, text: 'Pick a subject, then a mission.' },
     { pic: questCardHtml(p), text: "Today's Quest is a mix from every subject. A new one every day!" },
-    { pic: petCardHtml(p), text: 'Master questions to hatch your egg!' },
+    { pic: petCardHtml(p), text: hasPet(p) ? 'Master questions to help your creature grow!' : 'Master questions to hatch your egg!' },
   ];
   const c = cards[i], last = i === cards.length - 1;
   render(`<div class="kid-welcome tour stack">
@@ -1149,12 +1150,13 @@ function showSetupSignIn(back) {
     { back: back || (() => showWelcome(setup.invite)) });
   document.getElementById('sf').onsubmit = async e => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type=submit]'); if (btn.disabled) return; btn.disabled = true;
     try {
       const r = await syncCall({ action: 'login', family: document.getElementById('sfName').value, password: document.getElementById('sfPw').value });
       await signedIn(r, () => {}); unlockGrownup(); clearInvite();
       setup.path = 'signin';
       state.profiles.length ? showProfiles() : showSetupKids();
-    } catch (err) { formError('sfErr', /fetch|network/i.test(err.message) ? "You're offline. Connect to the internet to sign in." : err.message); }
+    } catch (err) { btn.disabled = false; formError('sfErr', isOffline(err) ? "You're offline. Connect to the internet to sign in." : err.message); }
   };
 }
 
@@ -3072,6 +3074,7 @@ function bindSyncCard(rerender) {
 }
 
 /* ----- Invite link: create a family account ----- */
+const isOffline = e => e instanceof TypeError || /fetch|network|offline/i.test((e && e.message) || '');
 async function showInvite(code) {
   history.replaceState(null, '', location.pathname);
   applyTheme('space');
@@ -3084,6 +3087,13 @@ async function showInvite(code) {
   }
   try { await syncCall({ action: 'invite_check', invite: code }); }
   catch (e) {
+    if (isOffline(e)) {   // keep the invite: the link is fine, the connection isn't
+      rememberInvite(code);
+      render(`<div class="card stack center" style="margin-top:30px"><h2>You're offline</h2><p>You're offline. Connect to the internet to continue setting up.</p>
+        <div class="row-actions"><button class="btn" id="retry">Try again</button><button class="btn ghost" id="ok">OK</button></div></div>`);
+      document.getElementById('retry').onclick = () => showInvite(code);
+      document.getElementById('ok').onclick = showProfiles; return;
+    }
     clearInvite();
     render(`<div class="card stack center" style="margin-top:30px"><h2>Invite link not working</h2><p>${esc(e.message)}</p>
       <div class="row-actions"><button class="btn" id="ok">OK</button></div></div>`);
@@ -3111,12 +3121,13 @@ function showSetupFamily() {
     e.preventDefault();
     const name = document.getElementById('fName').value.trim(), pw = document.getElementById('fPw').value;
     if (pw !== document.getElementById('fPw2').value) return formError('fErr', "The passwords don't match.");
+    const btn = e.target.querySelector('button[type=submit]'); if (btn.disabled) return; btn.disabled = true;
     try {
       const r = await syncCall({ action: 'signup', invite: setup.invite, family: name, password: pw });
       await signedIn(r, () => {}); unlockGrownup(); clearInvite();
       setup.path = 'invite';   // keep the invite step numbers after clearInvite
       showSetupRecovery(r.recovery);
-    } catch (err) { formError('fErr', /fetch|network/i.test(err.message) ? "You're offline. Connect to the internet to create your family." : err.message); }
+    } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message); }
   };
 }
 

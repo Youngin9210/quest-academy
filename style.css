@@ -595,8 +595,8 @@ section.card { margin-top: 16px; }
 .gu-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .gu-title h1 { margin: 0; }
 
-.kid-welcome { max-width: 640px; margin: 24px auto 0; text-align: center; align-items: center; }
-.kid-welcome h1 { margin: 0; }
+.kid-welcome { display: flex; flex-direction: column; max-width: 640px; margin: 24px auto 0; text-align: center; align-items: center; justify-content: center; min-height: calc(100vh - 140px); }
+.kid-welcome h1 { margin: 0 auto; }
 .world-pick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; width: 100%; }
 .world-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 12px; border-radius: 20px; font: inherit; color: var(--ink);
   background: var(--card); border: 2px solid var(--card-border); box-shadow: var(--press); cursor: pointer; }
@@ -608,9 +608,13 @@ section.card { margin-top: 16px; }
 .tour-pic { width: 100%; padding: 22px; border-radius: 22px; background: color-mix(in srgb, var(--accent2) 12%, transparent); pointer-events: none; text-align: left; }
 .tour-pic .subject-tabs { display: flex; justify-content: center; gap: 12px; padding: 0; margin: 0; overflow: visible; mask-image: none; -webkit-mask-image: none; }
 .tour-text { font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1.25; max-width: 22ch; margin-left: auto; margin-right: auto; }
-.kid-welcome h1 { margin-left: auto; margin-right: auto; }
-@media (max-width: 560px) { .world-pick { grid-template-columns: 1fr 1fr; gap: 10px; } .world-card { padding: 16px 8px; } }
 .kid-welcome.stack > .tour-text { margin-top: 24px; }
 .tour-pic .subject-tab { flex-direction: column; justify-content: center; gap: 4px; border-radius: 16px; padding: 10px 14px; font-size: 1.05rem; line-height: 1.15; min-height: 84px; min-width: 0; }
 .tour-pic .subject-tab .ti { font-size: 1.7rem; }
-@media (max-width: 560px) { .tour-pic { padding: 16px; } .tour-pic .subject-tabs { gap: 8px; } .tour-pic .subject-tab { padding: 10px 10px; } }
+@media (max-width: 560px) {
+  .world-pick { gap: 10px; }
+  .world-card { padding: 16px 8px; }
+  .tour-pic { padding: 16px; }
+  .tour-pic .subject-tabs { gap: 8px; }
+  .tour-pic .subject-tab { padding: 10px 10px; }
+}
