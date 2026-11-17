@@ -529,7 +529,7 @@ section.card { margin-top: 16px; }
 .pet-card .pet-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pet-card b { font-size: 1.3rem; }
 .pet-egg-card .pet-egg-icon { font-size: 3rem; }
-.pet-egg-card span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.pet-egg-card .pet-egg-text { display: flex; flex-direction: column; gap: 2px; }
 .pet-view { display: grid; place-items: center; border-radius: 18px; background: color-mix(in srgb, var(--accent2) 14%, transparent); overflow: hidden; flex: none; }
 .pet-view.small { width: 120px; height: 120px; }
 .pet-view.large { width: 100%; height: min(60vh, 420px); }
@@ -546,10 +546,11 @@ section.card { margin-top: 16px; }
 .egg-emoji { font-size: 2.2rem; }
 .wardrobe { display: flex; flex-wrap: wrap; gap: 8px; }
 .pick.ward { display: inline-flex; align-items: center; gap: 6px; }
-.pick.ward.locked { opacity: .6; font-size: .95rem; cursor: default; }
+.pick.ward.locked { color: var(--muted); font-size: .95rem; cursor: default; }
+.pick.ward.locked .ward-icon { opacity: .5; }
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; background: linear-gradient(135deg, var(--a) 60%, var(--b) 60%); cursor: pointer; padding: 0; }
 .swatch[aria-pressed="true"] { border-color: var(--accent-text); }
-.swatch.locked { background: repeating-linear-gradient(45deg, #ccc 0 6px, #e6e6e6 6px 12px); cursor: default; }
+.swatch.locked { background: repeating-linear-gradient(45deg, var(--card-border) 0 6px, transparent 6px 12px); cursor: default; }
 .result .pet-view.small { margin: 0 auto; width: 160px; height: 160px; }
 @media (max-width: 560px) { .pet-view.small { width: 96px; height: 96px; } }

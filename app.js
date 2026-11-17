@@ -1282,7 +1282,7 @@ function petProgressText(p) {
 function petCardHtml(p) {
   if (!p.pet || !p.pet.species) return `<button class="card pet-card pet-egg-card" id="petCard">
       <span class="pet-egg-icon" aria-hidden="true">🥚</span>
-      <span><b>An egg is waiting for you!</b><span class="muted">Pick a creature and give it a name.</span></span></button>`;
+      <span class="pet-egg-text"><b>An egg is waiting for you!</b><span class="muted">Pick a creature and give it a name.</span></span></button>`;
   const sp = PR.SPECIES[p.pet.species], mo = PR.pendingMoment(p.pet, petStage(p));
   return `<button class="card pet-card" id="petCard" aria-label="Visit ${esc(p.pet.name)}">
       <span class="pet-view small" id="petView"></span>
@@ -1297,7 +1297,8 @@ function bindPetCard(p) {
   if (!view) return;
   const mo = PR.pendingMoment(p.pet, petStage(p));
   showCreature(view, p, { interactive: false }).then(v => {
-    if (mo) { if (v) v.celebrate(mo.grew ? 'grow' : 'item'); markPetSeen(p); save(); }
+    if (v && v.celebrate && mo) v.celebrate(mo.grew ? 'grow' : 'item');
+    if (mo && view.isConnected) { markPetSeen(p); save(); }
   });
 }
 
@@ -1320,7 +1321,7 @@ function showHatch() {
         <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="hatch">Keep my egg 🥚</button></div>` : ''}
       </div>`);
     document.getElementById('back').onclick = showHome;
-    bindAll('[data-sp]', el => { const nmEl = document.getElementById('petName'); if (nmEl) name = nmEl.value; pick = el.dataset.sp; draw(); });
+    bindAll('[data-sp]', el => { const nmEl = document.getElementById('petName'); if (nmEl) { const prev = pick && PR.SPECIES[pick].defaultName; name = nmEl.value === prev ? '' : nmEl.value; } pick = el.dataset.sp; draw(); });
     const h = document.getElementById('hatch');
     if (h) h.onclick = () => {
       const nm = PR.cleanName(document.getElementById('petName').value);
@@ -1354,11 +1355,11 @@ function showDen() {
         const items = PR.ITEMS.filter(it => it.slot === slot);
         return `<div><span class="lbl">${slotName[slot]}</span><div class="wardrobe">${items.map(it => pet.items.includes(it.id)
           ? `<button class="pick ward" data-wear="${it.id}" aria-pressed="${pet.wear[slot] === it.id}"><span aria-hidden="true">${it.icon}</span>${esc(it.name)}</button>`
-          : `<span class="pick ward locked"><span aria-hidden="true">🔒</span>${esc(it.how)}</span>`).join('')}</div></div>`;
+          : `<span class="pick ward locked"><span aria-hidden="true">🔒</span><span class="ward-icon" aria-hidden="true">${it.icon}</span><span><b>${esc(it.name)}</b> · ${esc(it.how)}</span></span>`).join('')}</div></div>`;
       }).join('')}
       <div><span class="lbl">Colors</span><div class="swatches">${sp.patterns.map((c, i) => i < colors
         ? `<button class="swatch" data-color="${i}" aria-pressed="${(pet.color || 0) === i}" aria-label="Color ${i + 1}" style="--a:#${c[0].toString(16).padStart(6, '0')};--b:#${c[2].toString(16).padStart(6, '0')}"></button>`
-        : `<span class="swatch locked" aria-label="Locked color"></span>`).join('')}</div>
+        : `<span class="swatch locked" role="img" aria-label="Locked color: unlocks at the next stage"></span>`).join('')}</div>
         ${colors < 10 ? `<p class="muted" style="margin:6px 0 0">${esc(pet.name)} gets 2 new colors at each new stage.</p>` : ''}</div>
     </div>`);
   document.getElementById('back').onclick = showHome;
@@ -1366,11 +1367,18 @@ function showDen() {
   let view = null;
   showCreature(el, p, { interactive: true, onPet: () => sfx.good() }).then(v => {
     view = v;
-    if (mo) { if (v) v.celebrate(mo.grew ? 'grow' : 'item'); markPetSeen(p); save(); }
+    if (v && mo) v.celebrate(mo.grew ? 'grow' : 'item');
+    if (mo && el.isConnected) { markPetSeen(p); save(); }
   });
-  const change = fn => { fn(); pet.updated = Date.now(); save(); showDen(); };
-  bindAll('[data-wear]', b => change(() => { const it = PR.ITEM_BY_ID[b.dataset.wear]; pet.wear[it.slot] = pet.wear[it.slot] === it.id ? null : it.id; }));
-  bindAll('[data-color]', b => change(() => { pet.color = +b.dataset.color; }));
+  // Update in place: no re-render, so scroll position, focus and the WebGL view stay put.
+  const change = (fn, row) => {
+    fn(); pet.updated = Date.now(); save();
+    row.forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.wear ? pet.wear[PR.ITEM_BY_ID[b.dataset.wear].slot] === b.dataset.wear : (pet.color || 0) === +b.dataset.color)); });
+    if (view) view.update(petLook(p)); else el.innerHTML = petFallbackHtml(p);
+  };
+  bindAll('[data-wear]', b => change(() => { const it = PR.ITEM_BY_ID[b.dataset.wear]; pet.wear[it.slot] = pet.wear[it.slot] === it.id ? null : it.id; },
+    [...document.querySelectorAll('[data-wear]')].filter(x => PR.ITEM_BY_ID[x.dataset.wear].slot === PR.ITEM_BY_ID[b.dataset.wear].slot)));
+  bindAll('[data-color]', b => change(() => { pet.color = +b.dataset.color; }, [...document.querySelectorAll('[data-color]')]));
 }
 
 /* ----- Journal ----- */
