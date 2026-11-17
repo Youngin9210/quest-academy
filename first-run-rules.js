@@ -9,8 +9,12 @@
     return locked ? 'add-kids' : 'welcome';
   }
 
+  // A Home Screen app on iPadOS gets its own storage, separate from Safari: on the local-only path the
+  // Home Screen step comes first (everything is set up inside the app). Other paths keep it last (the
+  // family account carries the kids over).
   const PATHS = { invite: ['family', 'recovery', 'kids'], local: ['pin', 'kids'], signin: ['kids'] };
   function setupSteps(path, needsHomeScreen) {
+    if (path === 'local') return needsHomeScreen ? ['homescreen', ...PATHS.local] : PATHS.local.slice();
     return [...(PATHS[path] || PATHS.signin), ...(needsHomeScreen ? ['homescreen'] : [])];
   }
   function stepOf(id, path, needsHomeScreen) {
@@ -22,7 +26,8 @@
   function needsKidWelcome(p) {
     if (p.pickLook) return true;
     if (p.introSeen) return false;
-    return isEmpty(p.stats) && isEmpty(p.log) && isEmpty(p.missions);
+    if (p.lastDay || p.points > 0 || p.pet) return false;
+    return isEmpty(p.stats) && isEmpty(p.log) && isEmpty(p.missions) && isEmpty(p.typing) && isEmpty(p.journal) && isEmpty(p.questLog);
   }
 
   function joinNames(names) {

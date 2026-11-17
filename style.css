@@ -581,7 +581,8 @@ section.card { margin-top: 16px; }
 .setup-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 6px; }
 .big-btn { width: 100%; font-size: 1.2rem; padding: 14px 20px; }
 .big-btn:disabled { opacity: .45; cursor: default; }
-.linkish { background: none; border: 0; padding: 6px; font: inherit; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linkish { background: none; border: 0; padding: 6px; min-height: 44px; display: inline-flex; align-items: center; font: inherit; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .form-error { margin: 0; color: var(--bad-ink); font-weight: 600; }
 .kid-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .kid-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--ink) 6%, transparent); }

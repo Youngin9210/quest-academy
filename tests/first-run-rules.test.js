@@ -13,13 +13,20 @@ test('firstScreen', () => {
 test('setupSteps per path, home screen only when needed', () => {
   assert.deepEqual(F.setupSteps('invite', true), ['family', 'recovery', 'kids', 'homescreen']);
   assert.deepEqual(F.setupSteps('invite', false), ['family', 'recovery', 'kids']);
-  assert.deepEqual(F.setupSteps('local', true), ['pin', 'kids', 'homescreen']);
+  assert.deepEqual(F.setupSteps('local', true), ['homescreen', 'pin', 'kids']);
+  assert.deepEqual(F.setupSteps('local', false), ['pin', 'kids']);
+  assert.deepEqual(F.setupSteps('signin', true), ['kids', 'homescreen']);
   assert.deepEqual(F.setupSteps('signin', false), ['kids']);
 });
 
 test('stepOf', () => {
   assert.deepEqual(F.stepOf('kids', 'invite', true), { step: 3, total: 4 });
-  assert.deepEqual(F.stepOf('homescreen', 'local', true), { step: 3, total: 3 });
+  assert.deepEqual(F.stepOf('homescreen', 'local', true), { step: 1, total: 3 });
+  assert.deepEqual(F.stepOf('pin', 'local', true), { step: 2, total: 3 });
+  assert.deepEqual(F.stepOf('kids', 'local', true), { step: 3, total: 3 });
+  assert.deepEqual(F.stepOf('pin', 'local', false), { step: 1, total: 2 });
+  assert.deepEqual(F.stepOf('homescreen', 'invite', true), { step: 4, total: 4 });
+  assert.deepEqual(F.stepOf('homescreen', 'local', false), {});
   assert.deepEqual(F.stepOf('family', 'signin', false), {});
   assert.deepEqual(F.stepOf('kids', 'signin', false), {});   // a single step shows no "Step 1 of 1"
 });
@@ -32,6 +39,15 @@ test('needsKidWelcome', () => {
   assert.equal(F.needsKidWelcome({ stats: { 'q:a': { r: 1, w: 0, box: 1 } } }), false);
   assert.equal(F.needsKidWelcome({ log: [{ t: 1 }] }), false);
   assert.equal(F.needsKidWelcome({ missions: { addsub: { plays: 1 } } }), false);
+  assert.equal(F.needsKidWelcome({ lastDay: '2026-11-10' }), false);
+  assert.equal(F.needsKidWelcome({ points: 5 }), false);
+  assert.equal(F.needsKidWelcome({ points: 0 }), true);
+  assert.equal(F.needsKidWelcome({ typing: { home: [{ wpm: 10 }] } }), false);
+  assert.equal(F.needsKidWelcome({ typing: {} }), true);
+  assert.equal(F.needsKidWelcome({ journal: [{ text: 'hi' }] }), false);
+  assert.equal(F.needsKidWelcome({ questLog: ['2026-11-10'] }), false);
+  assert.equal(F.needsKidWelcome({ pet: { species: 'dog' } }), false);
+  assert.equal(F.needsKidWelcome({ pickLook: true, lastDay: '2026-11-10' }), true);
 });
 
 test('joinNames', () => {

@@ -994,8 +994,9 @@ if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__pet = { pet
    ========================================================= */
 
 // name: 'home' or 'profiles' marks the screens a sync may redraw; every other screen clears it
+let renderSeq = 0;
 function render(html, name = '') {
-  screen = name;
+  screen = name; renderSeq++;
   creatureToken++;   // cancels a view that is still loading
   if (creatureView) { creatureView.dispose(); creatureView = null; }
   const hadFocus = $app.contains(document.activeElement) || document.activeElement === document.body;
@@ -1004,17 +1005,22 @@ function render(html, name = '') {
   if (hadFocus) { $app.tabIndex = -1; $app.focus({ preventScroll: true }); }
 }
 
+// After a setup screen draws, put focus on its heading so screen readers start at the top of the step.
+function focusHeading() {
+  const h = $app.querySelector('h1, h2'); if (!h) return;
+  h.tabIndex = -1; h.focus({ preventScroll: true });
+}
 function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEventListener('click', () => fn(el))); }
 
 /* ----- Who's playing (kids only) and first-run routing ----- */
-const FR = window.FirstRun;
+const FR = window.FirstRun || { firstScreen: ({ players }) => players ? 'profiles' : 'welcome', setupSteps: () => ['kids'], stepOf: () => ({}), needsKidWelcome: () => false, joinNames: n => n.join(', ') };   // first-run-rules.js failed to load (mixed-version boot)
 function showProfiles() {
   state.current = null; writeStore();
   applyTheme('space');
   if (state.sync.pendingRecovery && !state.profiles.length) { setup.path = 'invite'; return showSetupRecovery(state.sync.pendingRecovery); }
   const route = FR.firstScreen({ locked: !!(state.grownPin || state.sync.token), players: state.profiles.length });
   if (route === 'welcome') return showWelcome(pendingInvite());
-  if (route === 'add-kids') { setup.path = state.sync.token ? 'signin' : 'local'; return showSetupKids(); }
+  if (route === 'add-kids') { setup = { path: state.sync.token ? 'signin' : 'local', invite: null, routed: true }; return showSetupKids(); }
   render(`
     <div class="hero stack who"><h1>Who's playing?</h1></div>
     <div class="profile-grid">
@@ -1039,11 +1045,14 @@ function openPlayer(p) {
 const WORLD_BLURB = { space: 'Aliens, rockets and stars', ocean: 'Fish, pearls and sunken ships', pets: 'Puppies, kittens and bunnies', bakery: 'Cupcakes, cookies and sweet treats' };
 function showKidWorld(p) {
   applyTheme(p.theme || 'space');
-  render(`<div class="kid-welcome stack">
-      <h1>Hi ${esc(p.name)}! Pick your world</h1>
-      <div class="world-pick">${Object.entries(THEMES).map(([id, t]) => `<button class="world-card" data-theme="${id}">
+  render(`<div class="topbar"><button class="btn ghost small" id="back">← Who's playing</button></div>
+    <div class="kid-welcome stack">
+      <h1 id="kwH">Hi ${esc(p.name)}! Pick your world</h1>
+      <div class="world-pick" role="group" aria-labelledby="kwH">${Object.entries(THEMES).map(([id, t]) => `<button class="world-card" data-theme="${id}">
         <span class="wc-icon" aria-hidden="true">${t.icon}</span><b>${esc(t.name)}</b><span class="muted">${WORLD_BLURB[id] || ''}</span></button>`).join('')}</div>
     </div>`);
+  focusHeading();
+  document.getElementById('back').onclick = showProfiles;   // pickLook stays, so she comes back to this screen
   bindAll('[data-theme]', el => {
     p.theme = el.dataset.theme;
     if (!THEMES[p.theme].avatars.includes(p.avatar)) p.avatar = THEMES[p.theme].avatars[0];   // never blank, even if she stops here
@@ -1055,10 +1064,11 @@ function showKidLook(p) {
   applyTheme(p.theme);
   render(`<div class="topbar"><button class="btn ghost small" id="back">← Worlds</button></div>
     <div class="kid-welcome stack">
-      <h1>Pick your ${esc(th.playerWord.toLowerCase())}</h1>
-      <div class="look-pick">${th.avatars.map(a => `<button class="pick emoji" data-av="${a}" aria-pressed="${a === p.avatar}">${a}</button>`).join('')}</div>
+      <h1 id="klH">Pick your ${esc(th.playerWord.toLowerCase())}</h1>
+      <div class="look-pick" role="group" aria-labelledby="klH">${th.avatars.map(a => `<button class="pick emoji" data-av="${a}" aria-pressed="${a === p.avatar}">${a}</button>`).join('')}</div>
       <div class="setup-actions"><button class="btn big-btn" id="next" ${p.avatar ? '' : 'disabled'}>Next</button></div>
     </div>`);
+  focusHeading();
   document.getElementById('back').onclick = () => showKidWorld(p);
   bindAll('[data-av]', el => { p.avatar = el.dataset.av; save(); showKidLook(p); });
   document.getElementById('next').onclick = () => { delete p.pickLook; save(); showKidTour(p, 0); };
@@ -1081,6 +1091,7 @@ function showKidTour(p, i) {
         ${last ? '' : '<button class="linkish" id="skip">Skip</button>'}
       </div>
     </div>`);
+  focusHeading();
   const done = () => { p.introSeen = true; save(); showHome(); };
   document.getElementById('next').onclick = () => last ? done() : showKidTour(p, i + 1);
   const sk = document.getElementById('skip'); if (sk) sk.onclick = done;
@@ -1091,10 +1102,10 @@ const isTouchDevice = () => navigator.maxTouchPoints > 1;
 const isHomeScreenApp = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 let setup = { path: 'signin', invite: null };
 const needsHomeScreen = () => isTouchDevice() && !isHomeScreenApp();
-const stepInfo = id => FR.stepOf(id, setup.path, needsHomeScreen());
+const stepInfo = id => setup.routed ? {} : FR.stepOf(id, setup.path, needsHomeScreen());
 const INVITE_KEY = 'qa.invite';
 function rememberInvite(code) { try { sessionStorage.setItem(INVITE_KEY, code); } catch (e) { /* private mode */ } }
-function pendingInvite() { try { return sessionStorage.getItem(INVITE_KEY); } catch (e) { return null; } }
+function pendingInvite() { try { const c = sessionStorage.getItem(INVITE_KEY); return /^[a-f0-9]{32}$/.test(c || '') ? c : null; } catch (e) { return null; } }
 function clearInvite() { try { sessionStorage.removeItem(INVITE_KEY); } catch (e) { /* ignore */ } setup.invite = null; }
 function setupLayout(inner, opts = {}) {
   applyTheme('space');
@@ -1102,10 +1113,22 @@ function setupLayout(inner, opts = {}) {
     <section class="card setup-card stack">
       ${opts.step ? `<p class="setup-step">Step ${opts.step} of ${opts.total}</p>` : ''}
       ${inner}
-    </section>`, opts.name || '');
+    </section>${opts.after || ''}`, opts.name || '');
+  focusHeading();
   if (opts.back) document.getElementById('back').onclick = opts.back;
 }
-function formError(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.hidden = false; } }
+// Shows an inline error (re-announced each time) and marks the related inputs invalid.
+function formError(id, msg, fields = []) {
+  const el = document.getElementById(id); if (!el) return;
+  clearErrors(el.closest('form'));
+  el.textContent = ''; el.textContent = msg; el.hidden = false;
+  for (const f of fields) { const i = document.getElementById(f); if (i) i.setAttribute('aria-invalid', 'true'); }
+}
+function clearErrors(form) {
+  if (!form) return;
+  form.querySelectorAll('[aria-invalid]').forEach(i => i.removeAttribute('aria-invalid'));
+  form.querySelectorAll('.form-error').forEach(e => { e.textContent = ''; e.hidden = true; });
+}
 
 function showWelcome(invite) {
   setup = { path: invite ? 'invite' : 'signin', invite };
@@ -1125,14 +1148,16 @@ function showWelcome(invite) {
     <div class="setup-actions">
       <button class="btn big-btn" id="${main[0]}">${main[1]}</button>
       ${alt ? `<button class="linkish" id="alt">${alt}</button>` : ''}
+      ${invite && state.profiles.length ? '<button class="linkish" id="notNow">Not now</button>' : ''}
     </div>`, { name: 'profiles' });
   const go = document.getElementById('go'), altBtn = document.getElementById('alt');
   if (invite) {
     go.onclick = () => showSetupFamily();
     altBtn.onclick = () => showSetupSignIn();
+    const nn = document.getElementById('notNow'); if (nn) nn.onclick = () => { clearInvite(); showProfiles(); };
   } else {
     if (go) go.onclick = () => showSetupSignIn();
-    altBtn.onclick = () => { setup.path = 'local'; showSetupPin(); };
+    altBtn.onclick = () => { setup.path = 'local'; needsHomeScreen() ? showSetupHome() : showSetupPin(); };
   }
 }
 
@@ -1148,15 +1173,24 @@ function showSetupSignIn(back) {
     </form>
     ${setup.invite ? '' : '<p class="muted">New family? You\'ll need an invite link from the person who shared Quest Academy.</p>'}`,
     { back: back || (() => showWelcome(setup.invite)) });
+  let signed = false;
   document.getElementById('sf').onsubmit = async e => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type=submit]'); if (btn.disabled) return; btn.disabled = true;
+    clearErrors(e.target);
     try {
-      const r = await syncCall({ action: 'login', family: document.getElementById('sfName').value, password: document.getElementById('sfPw').value });
-      await signedIn(r, () => {}); unlockGrownup(); clearInvite();
-      setup.path = 'signin';
+      if (!signed) {
+        const r = await syncCall({ action: 'login', family: document.getElementById('sfName').value, password: document.getElementById('sfPw').value });
+        await signedIn(r, () => {}); unlockGrownup(); signed = true;
+      } else await doSync();
+      if (lastSyncError && !state.profiles.length) {   // signed in, but the kids haven't come down yet
+        btn.disabled = false; btn.textContent = 'Try again';
+        return formError('sfErr', "Signed in, but we couldn't load your kids yet. Check the connection and try again.");
+      }
+      clearInvite();
+      setup.path = 'signin'; setup.routed = false;
       state.profiles.length ? showProfiles() : showSetupKids();
-    } catch (err) { btn.disabled = false; formError('sfErr', isOffline(err) ? "You're offline. Connect to the internet to sign in." : err.message); }
+    } catch (err) { btn.disabled = false; formError('sfErr', isOffline(err) ? "You're offline. Connect to the internet to sign in." : err.message, isOffline(err) ? [] : ['sfName', 'sfPw']); }
   };
 }
 
@@ -1170,14 +1204,16 @@ function showSetupPin() {
       <input class="text pin" id="p2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8">
       <p class="form-error" id="pErr" role="alert" hidden></p>
       <div class="setup-actions"><button class="btn big-btn" type="submit">Save PIN</button></div>
-    </form>`, { ...stepInfo('pin'), back: () => showWelcome(null) });
+    </form>`, { ...stepInfo('pin'), back: () => needsHomeScreen() ? showSetupHome() : showWelcome(null) });
   document.getElementById('pf').onsubmit = async e => {
     e.preventDefault();
+    clearErrors(e.target);
     const a = document.getElementById('p1').value, b = document.getElementById('p2').value;
-    if (!/^\d{4,8}$/.test(a)) return formError('pErr', 'Use 4 to 8 digits.');
-    if (a !== b) return formError('pErr', "The PINs don't match.");
+    if (!/^\d{4,8}$/.test(a)) return formError('pErr', 'Use 4 to 8 digits.', ['p1']);
+    if (a !== b) return formError('pErr', "The PINs don't match.", ['p1', 'p2']);
     const salt = Math.random().toString(36).slice(2);
     state.grownPin = { salt, hash: await sha256(salt + a) }; writeStore(); unlockGrownup();
+    setup.fromPin = true;
     showSetupKids();
   };
 }
@@ -1193,13 +1229,13 @@ function childFormHtml(f, label) {
   return `<form id="kf" class="stack kid-form" novalidate>
     <label class="lbl" for="kn">${label}</label>
     <input class="text" id="kn" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(f.name)}">
-    <span class="lbl">Grade</span>
-    <div class="pick-row">${GRADES.map(g => `<button type="button" class="pick" data-grade="${g}" aria-pressed="${g === f.grade}">${gradeName(g)}</button>`).join('')}</div>
+    <span class="lbl" id="kgl">Grade</span>
+    <div class="pick-row" role="group" aria-labelledby="kgl">${GRADES.map(g => `<button type="button" class="pick" data-grade="${g}" aria-pressed="${g === f.grade}">${gradeName(g)}</button>`).join('')}</div>
     <p class="form-error" id="kErr" role="alert" hidden></p>
-    <button class="btn ghost" type="submit">${f.button}</button>
+    <button class="btn${f.primary ? '' : ' ghost'}" type="submit">${f.button}</button>
   </form>`;
 }
-function bindChildForm(f, redraw, onAdd) {
+function bindChildForm(f, onAdd) {
   const nm = document.getElementById('kn');
   nm.oninput = () => { f.name = nm.value; };
   bindAll('[data-grade]', el => {   // in place: no redraw, so the page doesn't jump to the top
@@ -1208,8 +1244,9 @@ function bindChildForm(f, redraw, onAdd) {
   });
   document.getElementById('kf').onsubmit = e => {
     e.preventDefault();
+    clearErrors(e.target);
     const name = f.name.trim();
-    if (!name) return formError('kErr', "Type your child's first name.");
+    if (!name) return formError('kErr', "Type your child's first name.", ['kn']);
     if (!f.grade) return formError('kErr', 'Pick a grade.');
     addChild(name, f.grade);
     f.name = ''; f.grade = null;
@@ -1226,36 +1263,56 @@ function showSetupKids() {
       ${kids.length ? `<ul class="kid-list">${kids.map(p => `<li><b>${esc(p.name)}</b><span class="muted">${gradeName(p.grade)} grade</span>
         <button class="btn ghost small" data-rm="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></li>`).join('')}</ul>` : ''}
       ${childFormHtml(f, kids.length ? 'Add another child' : "Child's first name")}
-      <div class="setup-actions"><button class="btn big-btn" id="next" ${kids.length ? '' : 'disabled'}>Next</button></div>`, stepInfo('kids'));
-    bindChildForm(f, draw, draw);
+      <div class="setup-actions"><button class="btn big-btn" id="next" ${kids.length ? '' : 'disabled'}>Next</button></div>`,
+      { ...stepInfo('kids'), back: setup.fromPin && !setup.routed ? showSetupPin : null,
+        after: setup.routed ? '<p class="center"><button class="linkish" id="gu">👪 Grown-ups</button></p>' : '' });
+    const gu = document.getElementById('gu'); if (gu) gu.onclick = () => showParentGate(showParents, showProfiles);
+    bindChildForm(f, draw);
     bindAll('[data-rm]', el => { const p = state.profiles.find(x => x.id === el.dataset.rm); if (p && deletePlayer(p)) draw(); });
-    document.getElementById('next').onclick = () => needsHomeScreen() ? showSetupHome() : showSetupDone();
+    document.getElementById('next').onclick = () => needsHomeScreen() && setup.path !== 'local' ? showSetupHome() : showSetupDone();
   };
   draw();
+  if (state.sync.token) {   // kids added on another device show up instead of being added again
+    const seq = renderSeq;
+    doSync().then(() => {
+      if (renderSeq !== seq) return;   // she has moved on
+      if (state.profiles.length) return showProfiles();
+      if (document.activeElement !== document.getElementById('kn')) draw();
+    });
+  }
 }
 
 const SHARE_ICON = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>';
 function showSetupHome() {
+  const first = setup.path === 'local';   // local-only: the Home Screen app has its own storage, so set up there
   setupLayout(`<h2>Add it to the Home Screen</h2>
     <ol class="hs-steps">
       <li><span class="hs-pic" aria-hidden="true">${SHARE_ICON}</span><span>In Safari, tap the <b>Share</b> button.</span></li>
       <li><span class="hs-pic" aria-hidden="true">➕</span><span>Choose <b>Add to Home Screen</b>.</span></li>
     </ol>
-    <p class="muted">Then always open Quest Academy from that icon. It runs full screen, works offline and keeps progress safe.</p>
+    <p class="muted">${first ? 'Open Quest Academy from the new icon to finish setting up there.' : 'Then always open Quest Academy from that icon. It runs full screen, works offline and keeps progress safe.'}</p>
+    ${first ? '' : '<p class="muted">Then open the new icon and sign in with your family name. Your kids will be there.</p>'}
     <div class="setup-actions">
-      <button class="btn big-btn" id="done">Done</button>
-      <button class="linkish" id="skip">Skip for now</button>
-    </div>`, stepInfo('homescreen'));
-  document.getElementById('done').onclick = showSetupDone;
-  document.getElementById('skip').onclick = showSetupDone;
+      <button class="btn big-btn" id="done">${first ? "I've added it" : 'Done'}</button>
+      <button class="linkish" id="skip">${first ? 'Set up here in Safari instead' : 'Skip for now'}</button>
+    </div>`, { ...stepInfo('homescreen'), back: first ? () => showWelcome(null) : null });
+  document.getElementById('done').onclick = first ? showSetupOpenIcon : showSetupDone;
+  document.getElementById('skip').onclick = first ? showSetupPin : showSetupDone;
+}
+function showSetupOpenIcon() {
+  setupLayout(`<div class="welcome-hero">
+      <div class="big" aria-hidden="true">📱</div>
+      <h1>Now open it from your Home Screen</h1>
+      <p class="welcome-lede">Tap the new Quest Academy icon to finish setting up there.</p>
+    </div>`, { back: showSetupHome });
 }
 
 function showSetupDone() {
-  const names = FR.joinNames(state.profiles.map(p => p.name)), device = isTouchDevice() ? 'iPad' : 'computer';
+  const names = FR.joinNames(state.profiles.map(p => p.name));
   setupLayout(`<div class="welcome-hero">
       <div class="big" aria-hidden="true">🎉</div>
       <h1>You're all set!</h1>
-      <p class="welcome-lede">Hand the ${device} to ${esc(names)}.</p>
+      <p class="welcome-lede">Hand it to ${esc(names)}.</p>
     </div>
     ${state.sync.token ? `<p class="muted center">On other devices, open ${esc(location.host)} and sign in with your family name.</p>` : ''}
     <div class="setup-actions"><button class="btn big-btn" id="go">Go to Who's playing</button></div>`);
@@ -1296,14 +1353,14 @@ function showEditProfile(existing, after) {
           <p class="muted" style="margin:6px 0 0;font-size:.95rem">Saved only on this device.</p>
         </div>
         <div>
-          <span class="lbl">Pick your world</span>
-          <div class="theme-pick">
+          <span class="lbl" id="lblWorld">Pick your world</span>
+          <div class="theme-pick" role="group" aria-labelledby="lblWorld">
             ${Object.entries(THEMES).map(([id, t]) => `<button class="pick" data-theme="${id}" aria-pressed="${id === sel.theme}"><span>${t.icon}</span>${t.name}</button>`).join('')}
           </div>
         </div>
         <div>
-          <span class="lbl">Pick your ${th.playerWord.toLowerCase()}</span>
-          <div class="pick-row">
+          <span class="lbl" id="lblAvatar">Pick your ${th.playerWord.toLowerCase()}</span>
+          <div class="pick-row" role="group" aria-labelledby="lblAvatar">
             ${th.avatars.map(a => `<button class="pick emoji" data-av="${a}" aria-pressed="${a === sel.avatar}">${a}</button>`).join('')}
           </div>
         </div>
@@ -1312,8 +1369,8 @@ function showEditProfile(existing, after) {
           <p style="margin:0">${gradeName(sel.grade)} grade${Object.keys(sel.levels).length ? ' <span class="muted">(some subjects at a different level)</span>' : ''}
             <button class="btn ghost small" id="unlockGrade" type="button">🔒 Change (grown-ups)</button></p>
         </div>` : `<div>
-          <span class="lbl">What grade are you in?</span>
-          <div class="pick-row">
+          <span class="lbl" id="lblGrade">What grade are you in?</span>
+          <div class="pick-row" role="group" aria-labelledby="lblGrade">
             ${GRADES.map(g => `<button class="pick" data-grade="${g}" aria-pressed="${g === sel.grade}">${gradeName(g)} grade</button>`).join('')}
           </div>
         </div>`}
@@ -2691,7 +2748,7 @@ function showParents() {
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
     <div class="gu-title"><h1>Grown-ups</h1><button class="btn" id="addChild">+ Add a child</button></div>
-    ${state.profiles.length ? '' : '<p>No players yet. Tap "New player" on the Who\'s playing screen.</p>'}
+    ${state.profiles.length ? '' : '<p>No children yet. Tap + Add a child above.</p>'}
     <div class="gu-grid">
     ${state.profiles.map(p => {
       const week = logSince(p, 7), played = week.filter(e => e.k !== 'journal'), mins = minutesOf(week);
@@ -2721,12 +2778,12 @@ function showParents() {
 }
 
 function showAddChild() {
-  const f = { name: '', grade: null, button: 'Add child' };
+  const f = { name: '', grade: null, button: 'Add child', primary: true };
   const draw = () => {
     setupLayout(`<h2>Add a child</h2>
       <p class="muted">A first name and grade. She picks her world and look the first time she plays.</p>
       ${childFormHtml(f, "Child's first name")}`, { back: showParents });
-    bindChildForm(f, draw, () => { toast('Added!'); showParents(); });
+    bindChildForm(f, () => { toast('Added!'); showParents(); });
   };
   draw();
 }
@@ -2894,6 +2951,8 @@ function mergePlayer(a, b) {
   }
   const pet = PR.mergePet(a.pet, b.pet);
   if (pet) m.pet = pet; else delete m.pet;
+  if (a.introSeen || b.introSeen) m.introSeen = true; else delete m.introSeen;
+  if (!a.pickLook || !b.pickLook) delete m.pickLook;
   delete m.dirty;
   return m;
 }
@@ -3120,14 +3179,15 @@ function showSetupFamily() {
   document.getElementById('ff').onsubmit = async e => {
     e.preventDefault();
     const name = document.getElementById('fName').value.trim(), pw = document.getElementById('fPw').value;
-    if (pw !== document.getElementById('fPw2').value) return formError('fErr', "The passwords don't match.");
+    clearErrors(e.target);
+    if (pw !== document.getElementById('fPw2').value) return formError('fErr', "The passwords don't match.", ['fPw', 'fPw2']);
     const btn = e.target.querySelector('button[type=submit]'); if (btn.disabled) return; btn.disabled = true;
     try {
       const r = await syncCall({ action: 'signup', invite: setup.invite, family: name, password: pw });
       await signedIn(r, () => {}); unlockGrownup(); clearInvite();
       setup.path = 'invite';   // keep the invite step numbers after clearInvite
       showSetupRecovery(r.recovery);
-    } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message); }
+    } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message, isOffline(err) ? [] : ['fName']); }
   };
 }
 
