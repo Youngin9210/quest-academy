@@ -2,12 +2,12 @@
    The whole app (and the Spelling Bee recordings) is saved on the device the first time it opens with
    signal. With signal, files always come fresh from the server (and the saved copy is updated); without
    signal, or when the network is too slow, the saved copy is used. Sync (api/) is never cached. */
-const CACHE = 'quest-academy-v5';
+const CACHE = 'quest-academy-v6';
 const FONT_CACHE = 'quest-academy-fonts-v1';
 const NETWORK_WAIT = 4000;   // ms before a slow network gives way to the saved copy
 const CORE = [
   './', 'index.html', 'style.css', 'themes.js', 'app.js',
-  'pet-rules.js', 'first-run-rules.js', 'creature.js', 'lib/three-0.170.0.module.min.js', 'audio/spell-audio.js', 'manifest.webmanifest',
+  'pet-rules.js', 'first-run-rules.js', 'subject-rules.js', 'creature.js', 'lib/three-0.170.0.module.min.js', 'audio/spell-audio.js', 'manifest.webmanifest',
   'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'subjects/reading.js', 'subjects/writing.js', 'subjects/science.js', 'subjects/social.js',
   'subjects/reading-45.js', 'subjects/writing-45.js', 'subjects/science-45.js', 'subjects/social-45.js',
