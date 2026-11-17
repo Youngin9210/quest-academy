@@ -683,3 +683,20 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 @keyframes bossLaugh { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px) scale(1.06); } }
 @keyframes bossRun { to { transform: translateX(160%) rotate(20deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .boss-face.wobble, .boss-face.laugh, .adv-villain.laugh, .adv-villain.run-off { animation: none; } }
+
+/* Adventure: map screen */
+.adv-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.adv-title { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 4px 0; text-align: left; }
+.adv-title b { font-size: 1.7rem; line-height: 1.1; }
+.adv-dots { display: flex; gap: 6px; }
+.adv-dots i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255, 255, 255, .25); }
+.adv-dots i.done { background: var(--accent); }
+.adv-dots i.here { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); }
+.adv-map-wrap { min-height: 60vh; }
+.adv-bar { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
+  margin-top: 16px; background: color-mix(in srgb, var(--bg, #1a1036) 85%, transparent); backdrop-filter: blur(8px); border-radius: 18px 18px 0 0; }
+.adv-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.adv-list .btn { width: 100%; justify-content: flex-start; }
+.adv-intro .adv-problem { font-size: 1.35rem; text-align: center; margin: 0; max-width: 32ch; }
+.adv-watch { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.adv-watch-face { width: 56px; height: 56px; display: block; }

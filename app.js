@@ -1106,7 +1106,7 @@ function showProfiles() {
 }
 function openPlayer(p) {
   state.current = p.id; save();
-  if (!FR.needsKidWelcome(p)) return showHome();
+  if (!FR.needsKidWelcome(p)) { homeScreen = 'map'; return goHome(); }
   return p.pickLook ? showKidWorld(p) : showKidTour(p, 0);
 }
 
@@ -1146,7 +1146,7 @@ function showKidTour(p, i) {
   applyTheme(p.theme);
   const tabs = `<div class="subject-tabs">${subjectsFor(p).slice(0, 3).map((s, k) => `<span class="subject-tab" aria-selected="${k === 0}"><span class="ti">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></span>`).join('')}</div>`;
   const cards = [
-    { pic: tabs, text: 'Pick a subject, then a mission.' },
+    { pic: tabs, text: 'Follow the path! Each stop on your map is a mission.' },
     { pic: questCardHtml(p), text: "Today's Quest is a mix from every subject. A new one every day!" },
     { pic: petCardHtml(p), text: hasPet(p) ? 'Master questions to help your creature grow!' : 'Master questions to hatch your egg!' },
   ];
@@ -1161,7 +1161,7 @@ function showKidTour(p, i) {
       </div>
     </div>`);
   focusHeading();
-  const done = () => { p.introSeen = true; save(); showHome(); };
+  const done = () => { p.introSeen = true; save(); homeScreen = 'map'; goHome(); };
   document.getElementById('next').onclick = () => last ? done() : showKidTour(p, i + 1);
   const sk = document.getElementById('skip'); if (sk) sk.onclick = done;
 }
@@ -1543,6 +1543,7 @@ function showHome() {
 
   render(`
     <div class="topbar">
+      ${AR ? '<button class="btn ghost small" id="toMap">← Map</button>' : ''}
       <button class="btn ghost small" id="me">${p.avatar} ${esc(p.name)} ⚙️</button>
       <div class="chips">
         <span class="chip" title="${th.point}">${th.pointIcon} ${p.points}</span>
@@ -1606,6 +1607,7 @@ function showHome() {
   document.getElementById('switchP').onclick = showProfiles;
   document.getElementById('grown').onclick = () => showParentGate(showParents, showHome);
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showHome(); };
+  const tm = document.getElementById('toMap'); if (tm) tm.onclick = () => showMap();
   bindPetCard(p);
 }
 
@@ -2283,6 +2285,7 @@ const slotMaker = (subject, mid) => subject === 'math' ? mathMaker(mid) : bankMa
 function startStop(i) {
   const p = me(), adv = ensureAdventure(p), s = adv.stops[i];
   if (!s || i > adv.stop || adv.picking) return goHome();
+  typingStop = null;
   if (s.subject === 'typing') { typingStop = i; return startTyping(s.missionId); }
   const make = slotMaker(s.subject, s.missionId);
   game = slotGame({ missionId: s.missionId, subject: s.subject, adv: { kind: 'stop', i }, len: AR.STOP_LEN,
@@ -2293,6 +2296,7 @@ async function startBoss() {
   const p = me(), adv = ensureAdventure(p);
   if (!AR.bossReady(adv)) return goHome();
   await loadAdventureMod();
+  if (me() !== p || (screen !== 'map' && screen !== 'boss-end')) return;
   // the region's own missions, in path order (typing has no single questions)
   let list = adv.stops.filter(s => s && s.subject !== 'typing' && advValid(p, s)).map(s => ({ subject: s.subject, mid: s.missionId }));
   if (!list.length) { const mid = advPick(p)('math', []); list = mid ? [{ subject: 'math', mid }] : []; }
@@ -2342,10 +2346,111 @@ function finishBoss() {
           : `<button class="btn" id="again">Try again</button><button class="btn ghost" id="home">Back to map</button>`}
       </div>
     </div>`, 'boss-end');
-  const nx = document.getElementById('next'); if (nx) nx.onclick = goHome;
+  const nx = document.getElementById('next'); if (nx) nx.onclick = () => result === 'world' ? showWorldPicker(true) : showMap();
   const ag = document.getElementById('again'); if (ag) ag.onclick = startBoss;
   const hm = document.getElementById('home'); if (hm) hm.onclick = goHome;
   bindPetMoment(p);
+}
+
+/* ----- Adventure: the map (her home screen) ----- */
+function advListHtml(adv, stops) {
+  return `<ol class="adv-list">${stops.map((s, i) => s ? `<li><button class="btn ${i === adv.stop ? '' : 'ghost'}" data-stop="${i}" ${i > adv.stop ? 'disabled' : ''}>
+      ${s.icon} Stop ${i + 1}: ${esc(s.name)}${i < adv.stop ? ` ${'★'.repeat(s.stars)}` : ''}</button></li>` : '').join('')}
+    <li><button class="btn ${adv.stop >= AR.STOPS ? '' : 'ghost'}" data-stop="5" ${adv.stop >= AR.STOPS ? '' : 'disabled'}>⚔️ Boss: ${esc(AR.WORLDS[adv.world].villainShort)}</button></li></ol>`;
+}
+async function showMap(opts = {}) {
+  const p = me(); if (!p) return showProfiles();
+  if (!AR) return showHome();
+  homeScreen = 'map'; typingStop = null;
+  applyTheme(p.theme);
+  const adv = ensureAdventure(p);
+  if (adv.picking) return showWorldPicker();
+  if (!adv.seenIntro.includes(AR.regionKey(adv))) return showRegionIntro();
+  const th = theme(p), world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
+  const streakOk = p.lastDay && dayDiff(p.lastDay, today()) <= 1;
+  const journalOn = SUBJECTS.writing && SUBJECTS.writing.journalPrompts && subjectsFor(p).includes('writing');
+  render(`
+    <div class="topbar">
+      <button class="btn ghost small" id="me">${p.avatar} ${esc(p.name)} ⚙️</button>
+      <div class="chips">
+        <span class="chip" title="${th.point}">${th.pointIcon} ${p.points}</span>
+        <span class="chip" title="days in a row">🔥 ${streakOk ? p.streak : 0}</span>
+        <button class="chip" id="snd" aria-label="Sound" aria-pressed="${state.sound}">${state.sound ? '🔊' : '🔇'}</button>
+      </div>
+    </div>
+    <div class="adv-head">
+      <button class="adv-title" id="intro"><b>${esc(reg.name)}</b><span class="muted">${esc(world.name)} world · Region ${adv.region + 1} of ${AR.REGIONS}</span></button>
+      <span class="adv-dots" aria-hidden="true">${Array.from({ length: AR.REGIONS }, (_, k) => `<i class="${k < adv.region ? 'done' : k === adv.region ? 'here' : ''}"></i>`).join('')}</span>
+    </div>
+    <div id="advMap" class="adv-map-wrap"></div>
+    <nav class="adv-bar" aria-label="More to do">
+      <button class="btn ghost small" id="practice">📚 Free practice</button>
+      <button class="btn ghost small" id="petBtn">${hasPet(p) ? `🐾 ${esc(p.pet.name)}` : '🥚 My egg'}</button>
+      ${journalOn ? '<button class="btn ghost small" id="journal">📔 Journal</button>' : ''}
+      <button class="btn ghost small" id="coll">${esc(th.collection)}</button>
+      <button class="btn ghost small" id="switchP">🔄 Switch player</button>
+      <button class="btn ghost small" id="grown">👪 Grown-ups</button>
+    </nav>`, 'map');
+  document.getElementById('me').onclick = () => showEditProfile(p);
+  document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showMap({ y: window.scrollY }); };
+  document.getElementById('intro').onclick = () => showRegionIntro();
+  document.getElementById('practice').onclick = showHome;
+  document.getElementById('petBtn').onclick = () => hasPet(p) ? showDen() : showHatch();
+  const jb = document.getElementById('journal'); if (jb) jb.onclick = () => showJournal();
+  document.getElementById('coll').onclick = showCollection;
+  document.getElementById('switchP').onclick = showProfiles;
+  document.getElementById('grown').onclick = () => showParentGate(showParents, showMap);
+  const el = document.getElementById('advMap'), seq = renderSeq;
+  const stops = adv.stops.map(s => s && { icon: (SUBJECTS[s.subject] || {}).icon || '🎯', name: (SUBJECTS[s.subject] || {}).name || s.subject, stars: s.stars });
+  const hop = pendingHop; pendingHop = null;
+  const mod = await loadAdventureMod();
+  if (seq !== renderSeq) return;   // she left the map while the drawing loaded
+  if (mod) {
+    const map = mod.drawMap(el, { world: adv.world, region: adv.region, stops, stop: adv.stop, bonus: !questDoneToday(p),
+      boss: { face: mod.villainSvg(adv.world, adv.region), name: world.villainShort }, token: mod.tokenSvg(advLook(p)), from: hop != null && hop !== adv.stop ? hop : null });
+    if (hop != null && hop !== adv.stop) map.hopTo(adv.stop);
+  } else el.innerHTML = advListHtml(adv, stops);
+  el.querySelectorAll('[data-stop]').forEach(b => { b.onclick = () => +b.dataset.stop === 5 ? startBoss() : startStop(+b.dataset.stop); });
+  const bonus = el.querySelector('[data-bonus]'); if (bonus) bonus.onclick = startQuest;
+  if (opts.y != null) window.scrollTo(0, opts.y);
+  else { const next = el.querySelector('.adv-stop.next, .adv-list .btn:not(.ghost)'); if (next) next.scrollIntoView({ block: 'center' }); }
+}
+async function showRegionIntro() {
+  const p = me(), adv = p.adventure, world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
+  applyTheme(p.theme);
+  await loadAdventureMod();
+  render(`
+    <div class="kid-welcome stack adv-intro">
+      <p class="setup-step center">${esc(world.name)} world · Region ${adv.region + 1} of ${AR.REGIONS}</p>
+      <div class="pet-view large" id="petView">${hasPet(p) ? '' : '<span class="pet-emoji" aria-hidden="true">🥚</span>'}</div>
+      <h1 id="riH">${esc(reg.name)}</h1>
+      <p class="adv-problem">${esc(reg.problem)}</p>
+      ${advMod ? `<div class="adv-watch"><span class="adv-watch-face" aria-hidden="true">${advMod.villainSvg(adv.world, adv.region)}</span><span>Watch out for ${esc(world.villainShort)}!</span></div>` : ''}
+      <div class="setup-actions"><button class="btn big-btn" id="go">Let's go!</button></div>
+    </div>`, 'intro');
+  focusHeading();
+  if (hasPet(p)) showCreature(document.getElementById('petView'), p, { interactive: false });
+  document.getElementById('go').onclick = () => {
+    const k = AR.regionKey(adv);
+    if (!adv.seenIntro.includes(k)) { adv.seenIntro.push(k); adv.updated = Date.now(); save(); }
+    showMap();
+  };
+}
+function showWorldPicker(celebrate = false) {
+  const p = me(), adv = p.adventure, done = AR.WORLDS[adv.world];
+  applyTheme(p.theme);
+  render(`
+    <div class="kid-welcome stack">
+      <div class="pet-view large" id="petView">${hasPet(p) ? '' : '<span class="pet-emoji" aria-hidden="true">🥚</span>'}</div>
+      <h1 id="wpH">You finished the ${esc(done.name)} world!</h1>
+      <p class="muted center">Pick your next world.</p>
+      <div class="world-pick" role="group" aria-labelledby="wpH">${AR.nextWorlds(adv).map(id => `<button class="world-card" data-world="${id}">
+        <span class="wc-icon" aria-hidden="true">${THEMES[id].icon}</span><b>${esc(AR.WORLDS[id].name)}</b><span class="muted">${WORLD_BLURB[id] || ''}</span></button>`).join('')}</div>
+    </div>`, 'worlds');
+  focusHeading();
+  if (celebrate) { sfx.win(); confetti('🏆'); }
+  if (hasPet(p)) showCreature(document.getElementById('petView'), p, { interactive: false }).then(v => { if (v && celebrate) v.celebrate('grow'); });
+  bindAll('[data-world]', b => { AR.startWorld(adv, b.dataset.world); save(); showMap(); });
 }
 
 const hexColor = n => '#' + n.toString(16).padStart(6, '0');
@@ -2515,7 +2620,7 @@ const noKeyboardNote = () => matchMedia('(pointer: coarse)').matches
   ? `<p class="muted center" style="margin:6px 0 0">⌨️ Typing works best with a real keyboard. On a tablet, tap the words to open the keyboard.</p>` : '';
 
 function startTyping(id) {
-  if (!typingAvailable(me())) return goHome();   // no keyboard here, or typing is switched off
+  if (!typingAvailable(me())) { typingStop = null; return goHome(); }   // no keyboard here, or typing is switched off
   const lesson = TYPE_BY_ID[id];
   if (lesson.game) return startBlaster();
   const p = me(), th = theme(p);
@@ -3241,10 +3346,10 @@ async function doSync() {
     state.sync.ok = Date.now(); lastSyncError = '';
     if (state.current && !me()) state.current = null;
     writeStore();
-    if (changedView && !game && (screen === 'profiles' || screen === 'home')) {
+    if (changedView && !game && (screen === 'profiles' || screen === 'home' || screen === 'map')) {
       const y = window.scrollY;   // a background refresh shouldn't jump her to the top
-      (screen === 'home' && me() ? showHome : showProfiles)();
-      window.scrollTo(0, y);
+      if (screen === 'map' && me()) showMap({ y });
+      else { (screen === 'home' && me() ? showHome : showProfiles)(); window.scrollTo(0, y); }
     }
   } catch (e) {
     lastSyncError = e.message || 'Sync failed';
@@ -3489,7 +3594,7 @@ else if (me()) openPlayer(me()); else showProfiles();
 if (SYNC_URL && state.sync.code && !state.sync.token) {
   // devices set up with the first version's single family code move into the owner's family account
   syncCall({ action: 'legacy', passcode: state.sync.code })
-    .then(r => signedIn(r, () => { if (!game && (screen === 'home' || screen === 'profiles')) (me() ? showHome : showProfiles)(); }))
+    .then(r => signedIn(r, () => { if (!game && (screen === 'home' || screen === 'profiles' || screen === 'map')) (me() ? goHome : showProfiles)(); }))
     .catch(() => { delete state.sync.code; writeStore(); });
 } else if (SYNC_URL && state.sync.token) doSync();
 })();
