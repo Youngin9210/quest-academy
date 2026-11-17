@@ -124,7 +124,7 @@ const SPECIES_PARTS = {
   },
   axolotl(g, a, c, st, tex) {
     const { headY, hr } = a;
-    const smile = at(new THREE.Mesh(new THREE.TorusGeometry(hr * 0.25, hr * 0.03, 8, 16, Math.PI), mat(DARK)), 0, headY - hr * 0.22, hr * 0.94);
+    const smile = at(new THREE.Mesh(new THREE.TorusGeometry(hr * 0.25, hr * 0.03, 8, 16, Math.PI), mat(DARK)), 0, headY - hr * 0.22, 0.05 + hr * 0.95);
     smile.rotation.z = Math.PI; g.add(smile);
     for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
       const f = at(capsule(hr * 0.07, hr * (st >= 3 ? 0.55 : 0.42), c.accent), s * hr * 0.98, headY + (i - 1) * hr * 0.3, -0.02);
@@ -135,7 +135,7 @@ const SPECIES_PARTS = {
   },
   bunnycat(g, a, c, st, tex) {
     const { headY, hr } = a;
-    g.add(at(ball(hr * 0.08, 0xff8fab), 0, headY - hr * 0.12, hr * 0.98));                              // nose
+    g.add(at(ball(hr * 0.08, 0xff8fab), 0, headY - hr * 0.12, 0.05 + hr * 0.97));                              // nose
     const earLen = hr * (st >= 3 ? 0.95 : 0.75);
     for (const s of [-1, 1]) {
       const ear = at(capsule(hr * 0.17, earLen, c.body), s * hr * 0.4, headY + hr * 0.9 + earLen * 0.45, 0);
@@ -144,7 +144,7 @@ const SPECIES_PARTS = {
       inner.rotation.z = -s * 0.15; inner.scale.z = 0.4; g.add(inner);
       if (st === 4) g.add(at(ball(hr * 0.12, c.belly), s * hr * 0.47, headY + hr * 0.9 + earLen * 1.05, 0));
       for (const j of [-1, 1]) {
-        const w = at(cyl(0.006, 0.006, hr * 0.6, DARK), s * hr * 0.75, headY - hr * 0.2 + j * 0.035, hr * 0.7);
+        const w = at(cyl(0.006, 0.006, hr * 0.6, DARK), s * hr * 0.75, headY - hr * 0.2 + j * 0.035, 0.05 + hr * 0.7);
         w.rotation.z = Math.PI / 2 + s * j * 0.15; g.add(w);
       }
     }
