@@ -1006,85 +1006,200 @@ function render(html, name = '') {
 
 function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEventListener('click', () => fn(el))); }
 
-/* ----- Who's playing ----- */
+/* ----- Who's playing (kids only) and first-run routing ----- */
+const FR = window.FirstRun;
 function showProfiles() {
   state.current = null; writeStore();
   applyTheme('space');
+  const route = FR.firstScreen({ locked: !!(state.grownPin || state.sync.token), players: state.profiles.length });
+  if (route === 'welcome') return showWelcome(null);
+  if (route === 'add-kids') { setup.path = state.sync.token ? 'signin' : 'local'; return showSetupKids(); }
   render(`
-    <div class="hero stack">
-      <div class="big">🚀🐠🐶🧁</div>
-      <h1>Quest Academy</h1>
-      <p class="muted" style="font-size:1.2rem">Who's playing today?</p>
-    </div>
-    ${state.profiles.length ? '' : setupCardHtml()}
-    <div class="profile-grid" style="margin-top:20px">
+    <div class="hero stack who"><h1>Who's playing?</h1></div>
+    <div class="profile-grid">
       ${state.profiles.map(p => `
         <button class="profile" data-id="${p.id}">
           <span class="av">${p.avatar}</span>${esc(p.name)}
           <small>${THEMES[p.theme].icon} ${THEMES[p.theme].name}</small>
         </button>`).join('')}
-      <button class="profile add" id="add"><span class="av plus">+</span>New player</button>
     </div>
-    ${state.profiles.length ? setupCardHtml() : ''}
-    <div class="row-actions" style="margin-top:28px">
-      <button class="btn ghost small" id="parents">👪 Grown-ups</button>
-    </div>
-    ${SYNC_URL && !state.sync.token ? '<p class="muted center" style="margin-top:12px">☁️ Grown-ups: sign in to your family to share progress between devices.</p>' : ''}
+    <div class="row-actions" style="margin-top:28px"><button class="btn ghost small" id="parents">👪 Grown-ups</button></div>
   `, 'profiles');
-  bindAll('.profile[data-id]', el => { state.current = el.dataset.id; save(); showHome(); });
-  document.getElementById('add').onclick = () => showEditProfile();
+  bindAll('.profile[data-id]', el => openPlayer(state.profiles.find(p => p.id === el.dataset.id)));
   document.getElementById('parents').onclick = () => showParentGate();
-  bindSetupCard();
 }
+function openPlayer(p) { state.current = p.id; save(); showHome(); }
 
-/* ----- Grown-ups: getting started ----- */
+/* ----- First-run setup for grown-ups (spec: docs/superpowers/specs/2026-11-17-first-run-design.md) ----- */
 const isTouchDevice = () => navigator.maxTouchPoints > 1;
 const isHomeScreenApp = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-function setupSteps() {
-  const locked = !!(state.grownPin || state.sync.token);
-  const steps = [
-    { id: 'lock', done: locked, title: 'Lock the grown-ups page',
-      text: SYNC_URL ? 'Sign in to your family account, or make a PIN for this device. Kids then can\'t change grades or see the grown-ups page.'
-        : 'Make a PIN for this device. Kids then can\'t change grades or see the grown-ups page.',
-      action: locked ? '' : 'Set up the lock' },
-    { id: 'players', done: state.profiles.length > 0, title: 'Add a player for each child',
-      text: 'Tap "New player": each child picks a name, a world and her grade.', action: state.profiles.length ? '' : 'Add a player' },
-    { id: 'levels', done: !!state.setupSeen, title: 'Check grades and levels (optional)',
-      text: 'On the Grown-ups page, open a player\'s settings to set a different level for one subject, like 3rd grade but 4th grade math. Progress for each child shows there too.',
-      action: state.setupSeen ? '' : 'Open Grown-ups' },
-  ];
-  if (isTouchDevice()) steps.push({ id: 'home', done: isHomeScreenApp(), title: 'On an iPad: add it to the Home Screen',
-    text: 'In Safari tap Share, then "Add to Home Screen", and always play from that icon. It runs full screen, works offline, and keeps progress safe.', action: '' });
-  if (SYNC_URL) steps.push({ id: 'sync', done: !!state.sync.token, title: 'Using more than one device? (optional)',
-    text: 'Sign in to the same family account on each device and progress follows the kids everywhere.', action: state.sync.token ? '' : 'Sign in' });
-  return steps;
+let setup = { path: 'signin', invite: null };
+const needsHomeScreen = () => isTouchDevice() && !isHomeScreenApp();
+const stepInfo = id => FR.stepOf(id, setup.path, needsHomeScreen());
+const INVITE_KEY = 'qa.invite';
+function rememberInvite(code) { try { sessionStorage.setItem(INVITE_KEY, code); } catch (e) { /* private mode */ } }
+function pendingInvite() { try { return sessionStorage.getItem(INVITE_KEY); } catch (e) { return null; } }
+function clearInvite() { try { sessionStorage.removeItem(INVITE_KEY); } catch (e) { /* ignore */ } setup.invite = null; }
+function setupLayout(inner, opts = {}) {
+  applyTheme('space');
+  render(`${opts.back ? '<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>' : ''}
+    <section class="card setup-card stack">
+      ${opts.step ? `<p class="setup-step">Step ${opts.step} of ${opts.total}</p>` : ''}
+      ${inner}
+    </section>`, opts.name || '');
+  if (opts.back) document.getElementById('back').onclick = opts.back;
 }
-function setupCardHtml() {
-  if (state.setupHidden) return '';
-  const steps = setupSteps();
-  // the main setup is done: the kids' screen goes back to being theirs (the guide stays on the Grown-ups page)
-  if (['lock', 'players', 'levels'].every(id => steps.find(st => st.id === id).done)) return '';
-  const next = steps.find(st => !st.done && st.action);
-  return `<section class="card setup" aria-labelledby="setupTitle">
-    <div class="setup-head"><h2 id="setupTitle">👋 Grown-ups: getting started</h2>
-      <button class="btn ghost small" id="setupHide">Hide</button></div>
-    <p class="muted">A few minutes of setup, then the kids can play on their own.</p>
-    <ol class="setup-steps">${steps.map((st, i) => `<li class="${st.done ? 'done' : ''}">
-      <span class="setup-mark" aria-hidden="true">${st.done ? '✓' : i + 1}</span>
-      <div><b>${st.title}</b>${st.done ? ' <span class="sr-only">(done)</span>' : ''}<p>${st.text}</p>
-      ${st.action ? `<button class="btn small ${st === next ? '' : 'ghost'}" data-setup="${st.id}">${st.action}</button>` : ''}</div></li>`).join('')}</ol>
-    <p class="muted setup-foot">You can find this again under 👪 Grown-ups → How it works.</p>
-  </section>`;
+function formError(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.hidden = false; } }
+
+function showWelcome(invite) {
+  setup = { path: invite ? 'invite' : 'signin', invite };
+  const main = invite ? ['go', 'Set up our family'] : SYNC_URL ? ['go', 'Sign in to our family'] : ['alt', 'Get started'];
+  const alt = invite ? 'Already have a family account? Sign in' : SYNC_URL ? 'Use on this device only' : '';
+  setupLayout(`
+    <div class="welcome-hero">
+      <div class="big" aria-hidden="true">🚀🐠🐶🧁</div>
+      <h1>Quest Academy</h1>
+      <p class="welcome-lede">Practice that matches what your kids are learning in school: math, reading, writing, science, social studies and typing.</p>
+    </div>
+    <ul class="welcome-points">
+      <li><span aria-hidden="true">🎯</span>Set to each child's grade (2nd–5th), subject by subject.</li>
+      <li><span aria-hidden="true">🔁</span>Missed questions come back until they stick.</li>
+      <li><span aria-hidden="true">📊</span>You see what each child has mastered.</li>
+    </ul>
+    <div class="setup-actions">
+      <button class="btn big-btn" id="${main[0]}">${main[1]}</button>
+      ${alt ? `<button class="linkish" id="alt">${alt}</button>` : ''}
+    </div>`, { name: 'profiles' });
+  const go = document.getElementById('go'), altBtn = document.getElementById('alt');
+  if (invite) {
+    go.onclick = () => showSetupFamily();
+    altBtn.onclick = () => showSetupSignIn();
+  } else {
+    if (go) go.onclick = () => showSetupSignIn();
+    altBtn.onclick = () => { setup.path = 'local'; showSetupPin(); };
+  }
 }
-function bindSetupCard() {
-  const hide = document.getElementById('setupHide');
-  if (hide) hide.onclick = () => { state.setupHidden = true; writeStore(); showProfiles(); };
-  bindAll('[data-setup]', el => ({
-    lock: () => showParentGate(showProfiles, showProfiles),
-    players: () => showEditProfile(),
-    levels: () => showParentGate(showParents, showProfiles),
-    sync: () => showGateSignIn(showProfiles, showProfiles),
-  })[el.dataset.setup]());
+
+function showSetupSignIn(back) {
+  setupLayout(`<h2>Sign in to your family</h2>
+    <form id="sf" class="stack" autocomplete="on">
+      <label class="lbl" for="sfName">Family name</label>
+      <input class="text" id="sfName" autocomplete="username" autocapitalize="words">
+      <label class="lbl" for="sfPw">Password</label>
+      <input class="text" id="sfPw" type="password" autocomplete="current-password">
+      <p class="form-error" id="sfErr" role="alert" hidden></p>
+      <div class="setup-actions"><button class="btn big-btn" type="submit">Sign in</button></div>
+    </form>
+    ${setup.invite ? '' : '<p class="muted">New family? You\'ll need an invite link from the person who shared Quest Academy.</p>'}`,
+    { back: back || (() => showWelcome(setup.invite)) });
+  document.getElementById('sf').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const r = await syncCall({ action: 'login', family: document.getElementById('sfName').value, password: document.getElementById('sfPw').value });
+      await signedIn(r, () => {}); unlockGrownup(); clearInvite();
+      setup.path = 'signin';
+      state.profiles.length ? showProfiles() : showSetupKids();
+    } catch (err) { formError('sfErr', /fetch|network/i.test(err.message) ? "You're offline. Connect to the internet to sign in." : err.message); }
+  };
+}
+
+function showSetupPin() {
+  setupLayout(`<h2>Make a grown-up PIN</h2>
+    <p class="muted">The Grown-ups page shows progress and settings. A PIN keeps kids out.</p>
+    <form id="pf" class="stack">
+      <label class="lbl" for="p1">PIN (4 to 8 digits)</label>
+      <input class="text pin" id="p1" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8">
+      <label class="lbl" for="p2">Type it again</label>
+      <input class="text pin" id="p2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8">
+      <p class="form-error" id="pErr" role="alert" hidden></p>
+      <div class="setup-actions"><button class="btn big-btn" type="submit">Save PIN</button></div>
+    </form>`, { ...stepInfo('pin'), back: () => showWelcome(null) });
+  document.getElementById('pf').onsubmit = async e => {
+    e.preventDefault();
+    const a = document.getElementById('p1').value, b = document.getElementById('p2').value;
+    if (!/^\d{4,8}$/.test(a)) return formError('pErr', 'Use 4 to 8 digits.');
+    if (a !== b) return formError('pErr', "The PINs don't match.");
+    const salt = Math.random().toString(36).slice(2);
+    state.grownPin = { salt, hash: await sha256(salt + a) }; writeStore(); unlockGrownup();
+    showSetupKids();
+  };
+}
+
+// A child added by a grown-up: she picks her own world and look the first time she plays.
+function addChild(name, grade) {
+  const p = newProfile(name, THEMES.space.avatars[0], grade, 'space');
+  p.pickLook = true;
+  state.profiles.push(p); save();
+  return p;
+}
+function childFormHtml(f, label) {
+  return `<form id="kf" class="stack kid-form" novalidate>
+    <label class="lbl" for="kn">${label}</label>
+    <input class="text" id="kn" maxlength="14" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(f.name)}">
+    <span class="lbl">Grade</span>
+    <div class="pick-row">${GRADES.map(g => `<button type="button" class="pick" data-grade="${g}" aria-pressed="${g === f.grade}">${gradeName(g)}</button>`).join('')}</div>
+    <p class="form-error" id="kErr" role="alert" hidden></p>
+    <button class="btn ghost" type="submit">${f.button}</button>
+  </form>`;
+}
+function bindChildForm(f, redraw, onAdd) {
+  const nm = document.getElementById('kn');
+  nm.oninput = () => { f.name = nm.value; };
+  bindAll('[data-grade]', el => { f.grade = +el.dataset.grade; redraw(); });
+  document.getElementById('kf').onsubmit = e => {
+    e.preventDefault();
+    const name = f.name.trim();
+    if (!name) return formError('kErr', "Type your child's first name.");
+    if (!f.grade) return formError('kErr', 'Pick a grade.');
+    addChild(name, f.grade);
+    f.name = ''; f.grade = null;
+    onAdd();
+  };
+}
+
+function showSetupKids() {
+  const f = { name: '', grade: null, button: '+ Add child' };
+  const draw = () => {
+    const kids = state.profiles;
+    setupLayout(`<h2>Add your kids</h2>
+      <p class="muted">Just a first name and grade. Each child picks a world and look the first time she plays.</p>
+      ${kids.length ? `<ul class="kid-list">${kids.map(p => `<li><b>${esc(p.name)}</b><span class="muted">${gradeName(p.grade)} grade</span>
+        <button class="btn ghost small" data-rm="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></li>`).join('')}</ul>` : ''}
+      ${childFormHtml(f, kids.length ? 'Add another child' : "Child's first name")}
+      <div class="setup-actions"><button class="btn big-btn" id="next" ${kids.length ? '' : 'disabled'}>Next</button></div>`, stepInfo('kids'));
+    bindChildForm(f, draw, draw);
+    bindAll('[data-rm]', el => { const p = state.profiles.find(x => x.id === el.dataset.rm); if (p && deletePlayer(p)) draw(); });
+    document.getElementById('next').onclick = () => needsHomeScreen() ? showSetupHome() : showSetupDone();
+  };
+  draw();
+}
+
+const SHARE_ICON = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>';
+function showSetupHome() {
+  setupLayout(`<h2>Add it to the Home Screen</h2>
+    <ol class="hs-steps">
+      <li><span class="hs-pic" aria-hidden="true">${SHARE_ICON}</span><span>In Safari, tap the <b>Share</b> button.</span></li>
+      <li><span class="hs-pic" aria-hidden="true">➕</span><span>Choose <b>Add to Home Screen</b>.</span></li>
+    </ol>
+    <p class="muted">Then always open Quest Academy from that icon. It runs full screen, works offline and keeps progress safe.</p>
+    <div class="setup-actions">
+      <button class="btn big-btn" id="done">Done</button>
+      <button class="linkish" id="skip">Skip for now</button>
+    </div>`, stepInfo('homescreen'));
+  document.getElementById('done').onclick = showSetupDone;
+  document.getElementById('skip').onclick = showSetupDone;
+}
+
+function showSetupDone() {
+  const names = FR.joinNames(state.profiles.map(p => p.name)), device = isTouchDevice() ? 'iPad' : 'computer';
+  setupLayout(`<div class="welcome-hero">
+      <div class="big" aria-hidden="true">🎉</div>
+      <h1>You're all set!</h1>
+      <p class="welcome-lede">Hand the ${device} to ${esc(names)}.</p>
+    </div>
+    ${state.sync.token ? `<p class="muted center">On other devices, open ${esc(location.host)} and sign in with your family name.</p>` : ''}
+    <div class="setup-actions"><button class="btn big-btn" id="go">Go to Who's playing</button></div>`);
+  document.getElementById('go').onclick = showProfiles;
 }
 function howItWorksHtml() {
   return `<details class="card how" ${state.setupSeen ? '' : 'open'}><summary><b>📖 How it works</b></summary>
@@ -1098,7 +1213,6 @@ function howItWorksHtml() {
       ${SYNC_URL ? '<li><b>More than one device?</b> Sign in to your family account on each one (below). Progress syncs, and each device keeps working offline.</li>' : ''}
       <li><b>On an iPad,</b> add the app to the Home Screen (Share → Add to Home Screen) and always play from that icon.</li>
     </ul>
-    ${state.setupHidden ? '<button class="btn ghost small" id="showSetup">Show the getting-started list again</button>' : ''}
   </details>`;
 }
 
@@ -2541,8 +2655,6 @@ function showParents() {
   `);
   document.getElementById('back').onclick = showProfiles;
   bindSyncCard(showParents);
-  const ss = document.getElementById('showSetup');
-  if (ss) ss.onclick = () => { state.setupHidden = false; writeStore(); showProfiles(); };
   bindAll('[data-detail]', el => showParentDetail(el.dataset.detail));
   if (!state.setupSeen) { state.setupSeen = true; writeStore(); }
 }
@@ -2938,7 +3050,7 @@ async function showInvite(code) {
 /* ---------- boot ---------- */
 const inviteCode = SYNC_URL && (location.hash.match(/^#invite=([a-f0-9]{32})$/) || [])[1];
 if (inviteCode) showInvite(inviteCode);
-else if (me()) showHome(); else showProfiles();
+else if (me()) openPlayer(me()); else showProfiles();
 if (SYNC_URL && state.sync.code && !state.sync.token) {
   // devices set up with the first version's single family code move into the owner's family account
   syncCall({ action: 'legacy', passcode: state.sync.code })

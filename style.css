@@ -467,21 +467,6 @@ tr.subject-row th { padding-top: 16px; color: var(--ink); font-size: 1.05rem; }
 
 /* ---------- Grown-ups: getting started + how it works ---------- */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.setup { max-width: 640px; margin: 20px auto 0; text-align: left; }
-.setup-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.setup-head h2 { font-size: 1.35rem; }
-.setup > p { margin: 6px 0 0; }
-.setup-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
-.setup-steps li { display: grid; grid-template-columns: 2.2rem 1fr; gap: 12px; align-items: start; }
-.setup-steps p { margin: 4px 0 0; color: var(--muted); line-height: 1.4; }
-.setup-steps .btn { margin-top: 10px; }
-.setup-mark {
-  width: 2.2rem; height: 2.2rem; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 700; border: 2px solid var(--card-border); background: var(--card);
-}
-.setup-steps li.done .setup-mark { background: var(--good); color: var(--accent-ink); border-color: transparent; }
-.setup-steps li.done b { color: var(--muted); }
-.setup-foot { font-size: 1rem; margin-top: 14px !important; }
 .how summary { cursor: pointer; font-size: 1.2rem; min-height: 44px; display: flex; align-items: center; }
 .how ul { margin: 10px 0 0; padding-left: 1.2em; display: grid; gap: 8px; line-height: 1.45; }
 .how .btn { margin-top: 12px; }
@@ -579,3 +564,30 @@ section.card { margin-top: 16px; }
 .swatch.locked { background: repeating-linear-gradient(45deg, var(--card-border) 0 6px, transparent 6px 12px); cursor: default; }
 .result .pet-view.small { margin: 0 auto; width: 160px; height: 160px; }
 @media (max-width: 560px) { .pet-view.small { width: 96px; height: 96px; } }
+
+/* ----- First run ----- */
+.setup-card { max-width: 560px; margin: 24px auto 0; padding: 28px 26px; }
+.setup-card h1 { margin: 0; }
+.setup-card h2 { margin: 0; font-size: 1.6rem; }
+.setup-card .text { width: 100%; max-width: none; }
+.setup-card .text.pin { letter-spacing: .3em; font-size: 1.5rem; text-align: center; }
+.setup-step { margin: 0; font-weight: 600; color: var(--accent-text); font-size: .95rem; letter-spacing: .02em; }
+.welcome-hero { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.welcome-hero .big { font-size: 3rem; line-height: 1; }
+.welcome-lede { font-size: 1.2rem; line-height: 1.45; margin: 0; max-width: 34ch; }
+.welcome-points { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 10px; }
+.welcome-points li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--ink) 6%, transparent); line-height: 1.35; }
+.welcome-points li span { font-size: 1.6rem; flex: none; }
+.setup-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 6px; }
+.big-btn { width: 100%; font-size: 1.2rem; padding: 14px 20px; }
+.big-btn:disabled { opacity: .45; cursor: default; }
+.linkish { background: none; border: 0; padding: 6px; font: inherit; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.form-error { margin: 0; color: var(--bad-ink); font-weight: 600; }
+.kid-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.kid-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.kid-list li .muted { flex: 1; }
+.kid-form { padding: 14px; border-radius: 16px; border: 2px dashed var(--card-border); }
+.hs-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.hs-steps li { display: flex; align-items: center; gap: 14px; font-size: 1.1rem; }
+.hs-pic { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: color-mix(in srgb, var(--accent2) 18%, transparent); color: var(--accent2); font-size: 1.6rem; flex: none; }
+.hero.who { padding-top: 40px; }
