@@ -5,7 +5,8 @@
  * - New families can sign up two ways: with a one-time invite link made by the site owner's family, or
  *   openly without one. Open sign-ups are capped per IP (3 per 24 hours, and each counts toward the
  *   10-tries-per-15-minutes limit) so the sign-up form can't be used to mass-create accounts.
- * - Each device signs in once and gets its own token; progress syncs per family.
+ * - Each device signs in once and gets its own token; progress syncs per family (each player up to 1 MB).
+ * - A family can delete its own account (password needed); the site owner's family cannot be deleted that way.
  * Settings (database) live in quest-config.php, OUTSIDE the public folder. See server/quest-config.sample.php.
  */
 declare(strict_types=1);
@@ -140,7 +141,12 @@ if ($action === 'invite_check' || $action === 'signup') {
   $name = trim((string) ($req['family'] ?? '')); $pass = (string) ($req['password'] ?? '');
   if (!valid_name($name)) out(400, ['error' => 'Family name must be 2 to 40 characters.']);
   if (!valid_pass($pass)) out(400, ['error' => 'Password must be at least 8 characters.']);
-  if (family_by_name($db, $name)) out(409, ['error' => 'That family name is taken. Try adding something, like your last name.']);
+  if (family_by_name($db, $name)) {
+    $taken = 'That family name is taken. Try adding something, like your last name.';
+    // open sign-up: a taken name counts as a try, so family names can't be probed without limit
+    if ($open) fail($db, $ip, $now, $taken, 409);
+    out(409, ['error' => $taken]);
+  }
   if ($open) {
     $db->prepare('DELETE FROM qa_signups WHERE at < ?')->execute([$now - 24 * 3600 * 1000]);
     $q = $db->prepare('SELECT COUNT(*) FROM qa_signups WHERE ip = ?'); $q->execute([$ip]);
@@ -213,6 +219,20 @@ if ($action === 'new_recovery') {   // show a fresh recovery code (needs the pas
   out(200, ['recovery' => $recovery]);
 }
 
+// Delete this family: every player and its progress, every device's sign-in, unused invites, and the account.
+// Needs the password again. The site owner's family can't be deleted this way.
+if ($action === 'delete_family') {
+  if ((int) $fam['is_admin']) out(403, ['error' => "The site owner's family can't be deleted here."]);
+  if (!password_verify((string) ($req['password'] ?? ''), $fam['pass_hash'])) fail($db, $ip, $now, 'That password is not right.');
+  $db->beginTransaction();
+  $db->prepare('DELETE FROM qa_players WHERE family_id = ?')->execute([$fid]);
+  $db->prepare('DELETE FROM qa_tokens WHERE family_id = ?')->execute([$fid]);
+  $db->prepare('DELETE FROM qa_invites WHERE created_by = ? AND used_by IS NULL')->execute([$fid]);
+  $db->prepare('DELETE FROM qa_families WHERE id = ?')->execute([$fid]);
+  $db->commit();
+  out(200, ['ok' => true]);
+}
+
 /* ----- site owner only ----- */
 if ($action === 'invite' || $action === 'admin_reset') {
   if (!$fam['is_admin']) out(403, ['error' => 'Only the site owner can do that.']);
@@ -251,6 +271,7 @@ if ($action === 'push') {
     : $db->prepare('INSERT INTO qa_players (family_id, id, data, updated, deleted) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), updated = VALUES(updated), deleted = VALUES(deleted)');
   $count = $db->prepare('SELECT COUNT(*) FROM qa_players WHERE family_id = ? AND deleted = 0'); $count->execute([$fid]);
   $existing = (int) $count->fetchColumn();
+  $tooBig = [];   // players over the size cap: not saved, and the reply says so
   foreach (array_slice($req['players'] ?? [], 0, 20) as $p) {
     $id = (string) ($p['id'] ?? '');
     if (!preg_match('/^[a-z0-9]{4,64}$/i', $id)) continue;
@@ -260,9 +281,17 @@ if ($action === 'push') {
     if ($row && (int) $row['deleted'] && !$deleted) continue;  // a deleted player stays deleted (ids are never reused)
     if ($have !== false && (int) $have >= $updated && !($deleted && !(int) $row['deleted'])) continue;   // already have something newer
     if ($have === false && !$deleted && ++$existing > 12) continue; // keep each family to a sensible size
-    $ins->execute([$fid, $id, $deleted ? '{}' : json_encode($p['data'] ?? new stdClass()), $updated, $deleted ? 1 : 0]);
+    $json = $deleted ? '{}' : json_encode($p['data'] ?? new stdClass());
+    if ($json === false || strlen($json) > 1_000_000) {   // 1 MB cap per player: a busy player is about 70 KB, a maxed-out one about 300 KB
+      if ($have === false && !$deleted) $existing--;
+      $nm = is_array($p['data'] ?? null) && is_string($p['data']['name'] ?? null) ? mb_substr($p['data']['name'], 0, 14) : $id;
+      $tooBig[] = $nm;
+      continue;
+    }
+    $ins->execute([$fid, $id, $json, $updated, $deleted ? 1 : 0]);
     $saved[] = $id;
   }
+  if ($tooBig) out(413, ['error' => 'Could not sync ' . implode(', ', $tooBig) . ': too much saved progress (over 1 MB).', 'saved' => $saved, 'now' => $now]);
   out(200, ['saved' => $saved, 'now' => $now]);
 }
 
