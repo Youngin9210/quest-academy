@@ -1733,11 +1733,11 @@ function showDen() {
     if (mo && el.isConnected) { markPetSeen(p); save(); }
   });
   // Update in place: no re-render, so scroll position, focus and the WebGL view stay put.
-  // Reads p.pet on each tap: a sync merge swaps in a new pet object.
+  // Reads p.pet on each tap: every sync merge swaps in a fresh copy of the pet, so compare the species, not the object.
   const change = (fn, row) => {
     if (!hasPet(p)) return showHatch();   // reset on another device
     const cur = p.pet;
-    if (cur !== pet || cur.species !== drawnSpecies) return showDen();   // a sync swapped the pet: redraw instead of applying the tap
+    if (cur.species !== drawnSpecies) return showDen();   // re-hatched as another species on another device: redraw
     fn(cur); cur.updated = Date.now(); save();
     row.forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.wear ? cur.wear[PR.ITEM_BY_ID[b.dataset.wear].slot] === b.dataset.wear : (cur.color || 0) === +b.dataset.color)); });
     if (view) view.update(petLook(p));
