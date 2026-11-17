@@ -639,3 +639,28 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .subject-switch .sw-state { font-size: .85rem; font-weight: 700; opacity: .75; }
 .subject-switch[aria-pressed="false"] { opacity: .7; }
 .off-tag { font-size: .85rem; font-weight: 600; }
+
+/* ---------- Adventure map ---------- */
+.adv-map { position: relative; width: 100%; max-width: 520px; margin: 0 auto; aspect-ratio: 360 / 900; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.adv-scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+.adv-stop { position: absolute; transform: translate(-50%, -50%); width: 17%; aspect-ratio: 1; border-radius: 50%; border: 4px solid #fff; background: var(--card, #2a2060); color: inherit;
+  display: grid; place-items: center; padding: 0; cursor: pointer; box-shadow: 0 6px 0 rgba(0, 0, 0, .25); font: inherit; }
+.adv-stop .adv-icon { font-size: clamp(1.4rem, 6vw, 2.1rem); line-height: 1; }
+.adv-stop:disabled { opacity: .5; cursor: default; filter: grayscale(.4); }
+.adv-stop.done { background: color-mix(in srgb, var(--accent) 30%, var(--card, #2a2060)); }
+.adv-stop.next { border-color: var(--accent); animation: advPulse 1.6s ease-in-out infinite; }
+.adv-stop:focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
+.adv-stars { position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%); display: flex; gap: 1px; font-size: .95rem; background: rgba(0, 0, 0, .55); border-radius: 10px; padding: 0 5px; font-style: normal; }
+.adv-stars i { font-style: normal; color: rgba(255, 255, 255, .35); }
+.adv-stars i.on { color: #ffd23f; }
+.adv-boss { width: 25%; background: #fff; }
+.adv-boss .adv-face { width: 86%; height: 86%; display: block; }
+.adv-bonus { width: 14%; background: #ffd23f; border-color: #fff6c9; animation: advPulse 2s ease-in-out infinite; }
+.adv-token { position: absolute; transform: translate(-50%, -50%); width: 15%; aspect-ratio: 1; pointer-events: none; transition: left .7s ease-in-out, top .7s ease-in-out; z-index: 2; }
+.adv-token.hop { animation: advHop .7s ease-in-out; }
+@keyframes advPulse { 0%, 100% { box-shadow: 0 6px 0 rgba(0, 0, 0, .25), 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 50% { box-shadow: 0 6px 0 rgba(0, 0, 0, .25), 0 0 0 12px transparent; } }
+@keyframes advHop { 0%, 100% { margin-top: 0; } 50% { margin-top: -28px; } }
+@media (prefers-reduced-motion: reduce) {
+  .adv-token { transition: none; }
+  .adv-token.hop, .adv-stop.next, .adv-bonus { animation: none; }
+}
