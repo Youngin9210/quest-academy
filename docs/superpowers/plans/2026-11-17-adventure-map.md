@@ -139,11 +139,14 @@ test('repickStops replaces unplayed stops whose subject is off or mission is no 
   const adv = AR.newAdventure('space');
   AR.fillStops(adv, ['math', 'social'], pick);              // math, social, math, social, math
   AR.finishStop(adv, 0, 3); AR.finishStop(adv, 1, 2);      // social stop 1 was played
-  const changed = AR.repickStops(adv, ['math'], pick, s => s.missionId !== 'math-2');
+  // math-2 no longer fits her level: the real picker would not offer it either
+  const pickNo2 = (subject, taken) => pick(subject, [...taken, 'math-2']);
+  const changed = AR.repickStops(adv, ['math'], pickNo2, s => s.missionId !== 'math-2');
   assert.equal(changed, true);
   assert.equal(adv.stops[1].subject, 'social'); assert.equal(adv.stops[1].stars, 2);   // played: kept
   assert.ok(adv.stops.slice(2).every(s => s.subject === 'math' && s.missionId !== 'math-2'));
-  assert.equal(AR.repickStops(adv, ['math'], pick, () => true), false);
+  assert.equal(adv.stops[4].missionId, 'math-3');                                   // still valid: kept
+  assert.equal(AR.repickStops(adv, ['math'], pickNo2, () => true), false);
 });
 
 test('stars and the boss rule', () => {
