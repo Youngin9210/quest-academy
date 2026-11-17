@@ -16,7 +16,8 @@ test('setupSteps per path, home screen only when needed', () => {
   assert.deepEqual(F.setupSteps('local', true), ['homescreen', 'pin', 'kids']);
   assert.deepEqual(F.setupSteps('local', false), ['pin', 'kids']);
   assert.deepEqual(F.setupSteps('signin', true), ['kids', 'homescreen']);
-  assert.deepEqual(F.setupSteps('signin', false), ['kids']);});
+  assert.deepEqual(F.setupSteps('signin', false), ['kids']);
+});
 
 test('stepOf', () => {
   assert.deepEqual(F.stepOf('kids', 'account', true), { step: 3, total: 4 });

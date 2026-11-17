@@ -38,3 +38,27 @@ test('quest rotation drops off subjects, falls back to math', () => {
   assert.deepEqual(S.questRotation(rot, rot), rot);
   assert.deepEqual(S.questRotation(['social'], ['math']), ['math']);
 });
+
+test('defaultOn: social studies off at level 2 and below, everything else on', () => {
+  assert.equal(S.defaultOn('social', 1), false);
+  assert.equal(S.defaultOn('social', 2), false);
+  assert.equal(S.defaultOn('social', 3), true);
+  for (const sid of ['math', 'reading', 'writing', 'science', 'typing']) assert.equal(S.defaultOn(sid, 2), true, sid);
+});
+
+test('setSwitch stores only choices that differ from the default', () => {
+  assert.deepEqual(S.setSwitch({}, 'social', true, 2), { social: true });
+  assert.deepEqual(S.setSwitch({ social: true }, 'social', false, 2), {});
+  assert.deepEqual(S.setSwitch({}, 'reading', false, 3), { reading: false });
+  assert.deepEqual(S.setSwitch({ reading: false, social: true }, 'reading', true, 2), { social: true });
+  assert.deepEqual(S.setSwitch(undefined, 'social', true, 3), {});
+  const before = { social: true };
+  S.setSwitch(before, 'social', false, 2);
+  assert.deepEqual(before, { social: true }, 'does not change the object passed in');
+});
+
+test('a 2nd grader left on the default gets social studies in 3rd grade', () => {
+  const p = { subjects: S.setSwitch(S.setSwitch({}, 'social', true, 2), 'social', false, 2) };
+  assert.equal(S.subjectOn(p, 'social', 2), false);
+  assert.equal(S.subjectOn(p, 'social', 3), true);
+});
