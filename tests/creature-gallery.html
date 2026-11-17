@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creature gallery</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f1ea; margin: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+    figure { margin: 0; background: #fff; border-radius: 12px; padding: 6px; }
+    .v { height: 170px; }
+    figcaption { font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <p>Static gallery (one frame each, so the page doesn't create dozens of live WebGL loops). Change the query: <code>?wear=crown,scarf,cape&amp;color=3&amp;ground=ocean</code></p>
+  <div class="grid" id="g"></div>
+  <script src="../pet-rules.js"></script>
+  <script type="module">
+    import { mountCreature } from '../creature.js';
+    const q = new URLSearchParams(location.search);
+    const wear = { head: null, neck: null, back: null };
+    (q.get('wear') || '').split(',').filter(Boolean).forEach(id => { wear[PetRules.ITEM_BY_ID[id].slot] = id; });
+    const color = +(q.get('color') || 0), ground = q.get('ground') || 'space';
+    const grid = document.getElementById('g');
+    for (const species of PetRules.SPECIES_ORDER) for (let stage = 0; stage < 5; stage++) {
+      const f = document.createElement('figure');
+      f.innerHTML = `<div class="v"></div><figcaption>${species} · ${PetRules.STAGES[stage].name}</figcaption>`;
+      grid.appendChild(f);
+      const v = mountCreature(f.querySelector('.v'), { species, stage, color, wear, ground }, { interactive: false, reducedMotion: true, preserve: true });
+      // keep one frame as an image, then free the WebGL context
+      setTimeout(() => { const c = f.querySelector('canvas'), img = new Image(); img.src = c.toDataURL(); img.style.width = '100%'; v.dispose(); f.querySelector('.v').appendChild(img); }, 300);
+    }
+  </script>
+</body>
+</html>
