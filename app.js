@@ -917,12 +917,83 @@ const masteredCount = (p, missionId) => POOLS[missionId].filter(k => p.stats[k] 
 const showPct = x => x > 0 && x < .01 ? 1 : Math.round(x * 100);
 
 /* =========================================================
+   Creature companion (spec: docs/superpowers/specs/2026-11-17-creature-companion-design.md)
+   Rules: pet-rules.js. 3D: creature.js, loaded only when a screen shows the creature.
+   ========================================================= */
+const PR = window.PetRules;
+// deploy.sh adds ?v=<sha> to app.js; reuse it so the browser never keeps an old creature.js
+const ASSET_Q = ((document.currentScript && document.currentScript.src) || '').split('?')[1] || '';
+let creatureMod = null, creatureView = null, creatureToken = 0;
+function loadCreature() {
+  if (!creatureMod) creatureMod = import('./creature.js' + (ASSET_Q ? '?' + ASSET_Q : '')).catch(() => null);
+  return creatureMod;
+}
+let POOL_KEYS = null;
+function petMastered(p) {
+  if (!POOL_KEYS) POOL_KEYS = new Set(Object.values(POOLS).flat());
+  let n = 0;
+  for (const [k, s] of Object.entries(p.stats || {})) {
+    if (k.startsWith('q:') ? s.box >= 2 : POOL_KEYS.has(k) && s.box >= 3) n++;
+  }
+  return n;
+}
+const petStage = p => PR.stageFor(petMastered(p));
+const reducedMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function petLook(p) {
+  const pet = p.pet, stage = petStage(p);
+  return { species: pet.species, stage, color: Math.min(pet.color || 0, PR.colorsUnlocked(stage) - 1),
+    wear: { ...pet.wear }, ground: p.theme || 'space' };
+}
+function petContext(p) {
+  const streakOk = p.lastDay && dayDiff(p.lastDay, today()) <= 1;
+  const subjectsMastered = SUBJECT_ORDER.filter(sid => sid !== 'typing' &&
+    parentMissions(p, sid).some(m => missionMastery(p, sid, m.id) >= 0.8));
+  const goal = typeTarget(p);
+  const typingGoal = Object.entries(p.typing || {}).some(([id, runs]) => id !== 'type-game' && runs.some(r => r.wpm >= goal && r.acc >= 90));
+  return { streak: streakOk ? p.streak || 0 : 0, subjectsMastered, typingGoal };
+}
+function updatePet(p) {
+  if (!p.pet) return [];
+  const add = PR.newItems(p.pet, petContext(p));
+  if (add.length) p.pet.items = [...p.pet.items, ...add];
+  return add;
+}
+function markPetSeen(p) {
+  if (!p.pet) return;
+  p.pet.seenStage = Math.max(p.pet.seenStage || 0, petStage(p));
+  p.pet.seenItems = [...p.pet.items];
+}
+function petFallbackHtml(p) {
+  const sp = PR.SPECIES[p.pet.species];
+  return `<span class="pet-emoji pet-stage-${petStage(p)}" aria-hidden="true">${sp.emoji}</span>`;
+}
+// Mounts the 3D creature (or the emoji fallback) into el. Only one 3D view lives at a time.
+async function showCreature(el, p, opts = {}) {
+  if (creatureView) { creatureView.dispose(); creatureView = null; }
+  const token = ++creatureToken;
+  const mod = await loadCreature();
+  if (token !== creatureToken || !el.isConnected) return null;   // the screen changed while loading
+  if (mod) {
+    try {
+      creatureView = mod.mountCreature(el, petLook(p), { reducedMotion: reducedMotion(), ...opts });
+      el.classList.add('has-3d');
+      return creatureView;
+    } catch (e) { /* no WebGL */ }
+  }
+  el.innerHTML = petFallbackHtml(p);
+  return null;
+}
+window.__pet = { petMastered, petStage, petContext, updatePet, markPetSeen, petLook };
+
+/* =========================================================
    Screens
    ========================================================= */
 
 // name: 'home' or 'profiles' marks the screens a sync may redraw; every other screen clears it
 function render(html, name = '') {
   screen = name;
+  creatureToken++;   // cancels a view that is still loading
+  if (creatureView) { creatureView.dispose(); creatureView = null; }
   const hadFocus = $app.contains(document.activeElement) || document.activeElement === document.body;
   $app.innerHTML = html; window.scrollTo(0, 0);
   // keep keyboard players on the new screen instead of losing focus to <body>
@@ -1556,6 +1627,7 @@ function finishMission() {
   p.points += earned;
 
   touchStreak(p);
+  updatePet(p);
 
   // new collectible each mission until the set is complete
   const found = p.found[p.theme] || 0;
@@ -1705,6 +1777,7 @@ function finishQuest() {
   if (first) p.questLog = [...(p.questLog || []), t].slice(-120);
   logActivity(p, 'quest', 'quest', 'quest', right, len, game.started);
   touchStreak(p);
+  updatePet(p);
   const found = p.found[p.theme] || 0;
   let prize = null;
   if (first && found < th.collectibles.length) { prize = th.collectibles[found]; p.found[p.theme] = found + 1; }
@@ -1904,6 +1977,7 @@ function finishTyping(lesson, t) {
 function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = th.finish) {
   p.points += earned;
   touchStreak(p);
+  updatePet(p);
   const found = p.found[p.theme] || 0;
   let prize = null;
   if (allowPrize && found < th.collectibles.length) { prize = th.collectibles[found]; p.found[p.theme] = found + 1; }
@@ -2461,6 +2535,8 @@ function mergePlayer(a, b) {
   for (const id of new Set([...Object.keys(a.typing || {}), ...Object.keys(b.typing || {})])) {
     m.typing[id] = uniq([...((a.typing || {})[id] || []), ...((b.typing || {})[id] || [])], r => JSON.stringify(r)).slice(-30);
   }
+  const pet = PR.mergePet(a.pet, b.pet);
+  if (pet) m.pet = pet; else delete m.pet;
   delete m.dirty;
   return m;
 }
