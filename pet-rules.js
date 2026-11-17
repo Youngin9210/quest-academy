@@ -18,9 +18,14 @@
     return s;
   }
 
-  function progress(mastered) {
-    const stage = stageFor(mastered), next = STAGES[stage + 1];
-    return { stage, mastered, toNext: next ? next.min - mastered : null };
+  // Mastery is each question's current box, so a miss can lower the count. The creature never shrinks:
+  // it shows the highest stage she has already seen.
+  const displayStage = (mastered, seenStage) => Math.max(stageFor(mastered), seenStage || 0);
+
+  // Counts toward the stage after the one shown (never negative).
+  function progress(mastered, seenStage) {
+    const stage = displayStage(mastered, seenStage), next = STAGES[stage + 1];
+    return { stage, mastered, toNext: next ? Math.max(0, next.min - mastered) : null };
   }
 
   // [body, belly, accent]; the first two of each species are unlocked from the start
@@ -55,6 +60,9 @@
     ] },
   };
   const SPECIES_ORDER = ['dragon', 'fox', 'axolotl', 'bunnycat'];
+  // A hatched creature of a species this version knows. An egg, a grown-up reset (species null) or a
+  // species from a newer version (arriving by sync) counts as no creature yet.
+  const hasPet = pet => !!(pet && Object.prototype.hasOwnProperty.call(SPECIES, pet.species));
 
   const ITEMS = [
     { id: 'scarf', slot: 'neck', name: 'Scarf', icon: '🧣', how: 'Practice 3 days in a row', streak: 3 },
@@ -81,7 +89,7 @@
   const newItems = (pet, ctx) => earnedItems(ctx).filter(id => !pet.items.includes(id));
 
   function pendingMoment(pet, stage) {
-    if (!pet || !pet.species) return null;
+    if (!hasPet(pet)) return null;
     const items = pet.items.filter(id => !pet.seenItems.includes(id));
     const grew = stage > pet.seenStage;
     return grew || items.length ? { grew, stage, items } : null;
@@ -108,7 +116,7 @@
     return t.length >= 1 && t.length <= 16 ? t : null;
   }
 
-  const api = { STAGES, stageFor, progress, SPECIES, SPECIES_ORDER, ITEMS, ITEM_BY_ID, colorsUnlocked,
+  const api = { STAGES, stageFor, displayStage, progress, SPECIES, SPECIES_ORDER, hasPet, ITEMS, ITEM_BY_ID, colorsUnlocked,
     earnedItems, newItems, pendingMoment, newPet, mergePet, cleanName };
   root.PetRules = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

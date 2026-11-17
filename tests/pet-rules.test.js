@@ -1,4 +1,4 @@
-// Run: node --test tests/
+// Run: node --test 'tests/*.test.js'
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const R = require('../pet-rules.js');
@@ -12,6 +12,31 @@ test('progress counts down to the next stage and stops at legendary', () => {
   assert.deepEqual(R.progress(3), { stage: 0, mastered: 3, toNext: 7 });
   assert.deepEqual(R.progress(75), { stage: 2, mastered: 75, toNext: 125 });
   assert.deepEqual(R.progress(420), { stage: 4, mastered: 420, toNext: null });
+});
+
+test('displayed stage never goes down', () => {
+  assert.equal(R.displayStage(80, 2), 2);    // normal: mastery and seen agree
+  assert.equal(R.displayStage(80, 1), 2);    // grew: shows the new stage before the moment is seen
+  assert.equal(R.displayStage(74, 2), 2);    // a miss dropped mastery below Kid: still a Kid
+  assert.equal(R.displayStage(3, 4), 4);
+  assert.equal(R.displayStage(0, undefined), 0);
+  assert.equal(R.displayStage(250, 0), 3);
+});
+
+test('progress counts toward the stage after the one shown', () => {
+  assert.deepEqual(R.progress(74, 2), { stage: 2, mastered: 74, toNext: 126 });
+  assert.deepEqual(R.progress(80, 1), { stage: 2, mastered: 80, toNext: 120 });
+  assert.deepEqual(R.progress(10, 4), { stage: 4, mastered: 10, toNext: null });
+});
+
+test('hasPet: only a known species counts', () => {
+  assert.equal(R.hasPet(undefined), false);
+  assert.equal(R.hasPet({ species: null }), false);
+  assert.equal(R.hasPet({ species: 'unicorn' }), false);   // from a newer version
+  assert.equal(R.hasPet({ species: 'toString' }), false);
+  assert.equal(R.hasPet(R.newPet('fox', 'Maple')), true);
+  const future = { ...R.newPet('fox', 'Maple'), species: 'unicorn', items: ['scarf'] };
+  assert.equal(R.pendingMoment(future, 3), null);
 });
 
 test('every species has 10 color patterns of 3 colors and a default name', () => {

@@ -9,15 +9,16 @@ const HEAD_R = [0, 0.46, 0.43, 0.4, 0.4];      // head radius per stage (big hea
 const BODY_R = 0.42, BODY_Y = 0.45;
 const DARK = 0x1d1b2f;
 
-let gradientTex = null;   // shared, never disposed
-function gradient() {
-  if (gradientTex) return gradientTex;
-  gradientTex = new THREE.DataTexture(new Uint8Array([110, 185, 255]), 3, 1, THREE.RedFormat);
-  gradientTex.minFilter = gradientTex.magFilter = THREE.NearestFilter;
-  gradientTex.needsUpdate = true;
-  return gradientTex;
+// Toon shading steps. Each mount makes its own and disposes it (a texture keeps the renderers it was
+// uploaded to reachable, so one shared module-level texture would leak every old renderer).
+function makeGradient() {
+  const t = new THREE.DataTexture(new Uint8Array([110, 185, 255]), 3, 1, THREE.RedFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
 }
-const mat = (color, extra = {}) => new THREE.MeshToonMaterial({ color, gradientMap: gradient(), ...extra });
+let gradientTex = null;   // the building mount's gradient; set only while build() runs (builds are synchronous)
+const mat = (color, extra = {}) => new THREE.MeshToonMaterial({ color, gradientMap: gradientTex, ...extra });
 function ball(r, color, sx = 1, sy = 1, sz = 1) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), mat(color)); m.scale.set(sx, sy, sz); return m;
 }
@@ -239,14 +240,17 @@ function disposeTree(obj) {
 /* ---------- mount ---------- */
 export function mountCreature(el, look, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: !!opts.preserve });   // throws if WebGL is unavailable
-  try { return setup(renderer, el, look, opts); }
-  catch (err) {   // anything after the renderer exists must not leak a canvas or a GL context
+  const cleanup = [];   // undo steps, added as setup attaches things (observers, listeners, textures)
+  const undo = () => { while (cleanup.length) { try { cleanup.pop()(); } catch (e) { /* keep undoing */ } } };
+  try { return setup(renderer, el, look, opts, cleanup, undo); }
+  catch (err) {   // anything after the renderer exists must not leak a canvas, a GL context, an observer or a listener
+    undo();
     renderer.domElement.remove(); renderer.dispose(); renderer.forceContextLoss();
     throw err;
   }
 }
 
-function setup(renderer, el, look, opts) {
+function setup(renderer, el, look, opts, cleanup, undo) {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   el.appendChild(renderer.domElement);
@@ -263,6 +267,9 @@ function setup(renderer, el, look, opts) {
   const pivot = new THREE.Group(); pivot.rotation.y = -0.45; stageRoot.add(pivot);   // turns with dragging
   const mover = new THREE.Group(); pivot.add(mover);       // hops and bobs
   const tex = { sparkle: shared(sparkleTex()), heart: shared(heartTex()) };   // one of each per mount
+  cleanup.push(() => { tex.sparkle.dispose(); tex.heart.dispose(); });
+  const gradient = makeGradient();
+  cleanup.push(() => gradient.dispose());
   let ground = null, creature = null, gear = [], current = null;
   const fx = new THREE.Group(); stageRoot.add(fx);         // hearts and sparkles
 
@@ -271,13 +278,16 @@ function setup(renderer, el, look, opts) {
     if (!ground) { ground = buildGround(next.ground); stageRoot.add(ground); }
     if (creature) { mover.remove(creature.group); disposeTree(creature.group); }
     gear.forEach(gm => { mover.remove(gm); disposeTree(gm); }); gear = [];
-    creature = buildCreature(next, tex);
-    creature.group.scale.setScalar(SIZE[next.stage]);
-    mover.add(creature.group);
-    if (creature.anchors) for (const slot of ['head', 'neck', 'back']) {
-      const id = next.wear && next.wear[slot];
-      if (id && GEAR[id]) { const gm = GEAR[id](creature.anchors); gm.scale.setScalar(SIZE[next.stage]); mover.add(gm); gear.push(gm); }
-    }
+    gradientTex = gradient;
+    try {
+      creature = buildCreature(next, tex);
+      creature.group.scale.setScalar(SIZE[next.stage]);
+      mover.add(creature.group);
+      if (creature.anchors) for (const slot of ['head', 'neck', 'back']) {
+        const id = next.wear && next.wear[slot];
+        if (id && GEAR[id]) { const gm = GEAR[id](creature.anchors); gm.scale.setScalar(SIZE[next.stage]); mover.add(gm); gear.push(gm); }
+      }
+    } finally { gradientTex = null; }
     current = { ...next, wear: { ...(next.wear || {}) } };
   }
   build(look);
@@ -332,13 +342,13 @@ function setup(renderer, el, look, opts) {
 
   let intersecting = true, docVisible = document.visibilityState === 'visible', visible = intersecting && docVisible;
   const syncVisible = () => { visible = intersecting && docVisible; if (visible) kick(); };
-  try {
-    ro = new ResizeObserver(resize); ro.observe(el);
-    io = new IntersectionObserver(entries => { intersecting = entries[entries.length - 1].isIntersecting; syncVisible(); });
-    io.observe(el);
-  } catch (err) { if (ro) ro.disconnect(); throw err; }
+  ro = new ResizeObserver(resize); cleanup.push(() => ro.disconnect()); ro.observe(el);
+  io = new IntersectionObserver(entries => { intersecting = entries[entries.length - 1].isIntersecting; syncVisible(); });
+  cleanup.push(() => io.disconnect()); io.observe(el);
   const onVis = () => { docVisible = document.visibilityState === 'visible'; syncVisible(); };
   document.addEventListener('visibilitychange', onVis);
+  cleanup.push(() => document.removeEventListener('visibilitychange', onVis));
+  cleanup.push(() => { cancelAnimationFrame(raf); raf = 0; visible = false; });
 
   function pet() {
     hopT = 0;
@@ -357,9 +367,12 @@ function setup(renderer, el, look, opts) {
     if (down.moved) { pivot.rotation.y = down.rot + dx * 0.012; kick(); }
   };
   const onUp = () => { if (down && !down.moved) pet(); down = null; };
+  const onCancel = () => { down = null; };
   if (opts.interactive) {
     canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', () => { down = null; });
+    canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onCancel);
+    cleanup.push(() => { canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel); });
   }
 
   kick();
@@ -378,9 +391,8 @@ function setup(renderer, el, look, opts) {
       kick();
     },
     dispose() {
-      cancelAnimationFrame(raf); raf = 0; visible = false;
-      ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVis);
-      disposeTree(scene); tex.sparkle.dispose(); tex.heart.dispose();
+      undo();   // stops the loop, observers, listeners; frees the shared textures and the gradient
+      disposeTree(scene);
       renderer.dispose(); renderer.forceContextLoss();
       canvas.remove();
     },

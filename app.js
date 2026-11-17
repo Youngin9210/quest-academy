@@ -937,7 +937,10 @@ function petMastered(p) {
   }
   return n;
 }
-const petStage = p => PR.stageFor(petMastered(p));
+const hasPet = p => PR.hasPet(p && p.pet);
+// grownStage: from mastery alone (for growth moments). petStage: what is shown, which never goes down.
+const grownStage = p => PR.stageFor(petMastered(p));
+const petStage = p => PR.displayStage(petMastered(p), p.pet && p.pet.seenStage);
 const reducedMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 function petLook(p) {
   const pet = p.pet, stage = petStage(p);
@@ -960,7 +963,7 @@ function updatePet(p) {
 }
 function markPetSeen(p) {
   if (!p.pet) return;
-  p.pet.seenStage = Math.max(p.pet.seenStage || 0, petStage(p));
+  p.pet.seenStage = Math.max(p.pet.seenStage || 0, grownStage(p));
   p.pet.seenItems = [...p.pet.items];
 }
 function petFallbackHtml(p) {
@@ -973,6 +976,7 @@ async function showCreature(el, p, opts = {}) {
   const token = ++creatureToken;
   const mod = await loadCreature();
   if (token !== creatureToken || !el.isConnected) return null;   // the screen changed while loading
+  el.textContent = '';   // drop anything drawn while loading (one view, never canvas beside emoji)
   if (mod) {
     try {
       creatureView = mod.mountCreature(el, petLook(p), { reducedMotion: reducedMotion(), ...opts });
@@ -983,7 +987,7 @@ async function showCreature(el, p, opts = {}) {
   el.innerHTML = petFallbackHtml(p);
   return null;
 }
-window.__pet = { petMastered, petStage, petContext, updatePet, markPetSeen, petLook };
+if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__pet = { petMastered, petStage, grownStage, petContext, updatePet, markPetSeen, petLook };   // test hook
 
 /* =========================================================
    Screens
@@ -1148,7 +1152,7 @@ function showEditProfile(existing, after) {
           <button class="btn" id="saveP">${existing ? 'Save' : `Let's go! ${th.icon}`}</button>
           ${existing ? '<button class="btn ghost small" id="switch">Switch player</button>' : ''}
         </div>
-        ${existing && existing.pet && existing.pet.species && grownupUnlocked() ? `<div class="row-actions" style="justify-content:flex-start">
+        ${existing && hasPet(existing) && grownupUnlocked() ? `<div class="row-actions" style="justify-content:flex-start">
           <button class="btn ghost small" id="petReset" type="button">🥚 Let ${esc(existing.name)} pick a new creature</button></div>` : ''}
         ${existing ? `<div class="row-actions" style="justify-content:flex-start">
           <button class="btn ghost small danger" id="delP" type="button">${grownupUnlocked() ? '🗑️ Delete this player' : '🔒 Delete this player (grown-ups)'}</button></div>` : ''}
@@ -1277,22 +1281,24 @@ function showHome() {
 /* ----- Creature: home card, hatching, den ----- */
 function petMomentText(p, mo) {
   const nm = esc(p.pet.name), parts = [];
-  if (mo.grew) parts.push(mo.stage === 1 ? `${nm} hatched!` : `${nm} grew into a ${PR.STAGES[mo.stage].name}!`);
+  // first reveal (from the egg, whatever stage she has reached) reads as hatching
+  const grewText = { 2: `${nm} grew into a Kid!`, 3: `${nm} is all grown up!`, 4: `${nm} became Legendary!` };
+  if (mo.grew) parts.push(mo.stage === 1 || !(p.pet.seenStage > 0) ? `${nm} hatched!` : grewText[mo.stage] || `${nm} grew!`);
   if (mo.items.length) parts.push(`New for ${nm}: ${mo.items.map(id => `${PR.ITEM_BY_ID[id].icon} ${esc(PR.ITEM_BY_ID[id].name)}`).join(', ')}`);
   return parts.join(' ');
 }
 function petProgressText(p) {
-  const pr = PR.progress(petMastered(p));
+  const pr = PR.progress(petMastered(p), p.pet && p.pet.seenStage);
   if (pr.toNext === null) return 'Fully grown!';
   const verb = pr.stage === 0 ? 'to hatch' : 'to grow';
   return `${plural(pr.toNext, 'more mastered question')} ${verb}`;
 }
 function petCardHtml(p) {
-  if (!p.pet || !p.pet.species) return `<button class="card pet-card pet-egg-card" id="petCard">
+  if (!hasPet(p)) return `<button class="card pet-card pet-egg-card" id="petCard">
       <span class="pet-egg-icon" aria-hidden="true">🥚</span>
       <span class="pet-egg-text"><b>An egg is waiting for you!</b><span class="muted">Pick a creature and give it a name.</span></span></button>`;
-  const sp = PR.SPECIES[p.pet.species], mo = PR.pendingMoment(p.pet, petStage(p));
-  return `<button class="card pet-card" id="petCard" aria-label="Visit ${esc(p.pet.name)}">
+  const sp = PR.SPECIES[p.pet.species], mo = PR.pendingMoment(p.pet, grownStage(p));
+  return `<button class="card pet-card" id="petCard">
       <span class="pet-view small" id="petView"></span>
       <span class="pet-info"><b>${esc(p.pet.name)}</b><span class="muted">${PR.STAGES[petStage(p)].name} ${sp.name}</span>
         ${mo ? `<span class="pet-new">${petMomentText(p, mo)}</span>` : `<span class="muted">${petProgressText(p)}</span>`}</span></button>`;
@@ -1300,10 +1306,10 @@ function petCardHtml(p) {
 function bindPetCard(p) {
   const card = document.getElementById('petCard');
   if (!card) return;
-  card.onclick = () => p.pet && p.pet.species ? showDen() : showHatch();
+  card.onclick = () => hasPet(p) ? showDen() : showHatch();
   const view = document.getElementById('petView');
   if (!view) return;
-  const mo = PR.pendingMoment(p.pet, petStage(p));
+  const mo = PR.pendingMoment(p.pet, grownStage(p));
   showCreature(view, p, { interactive: false }).then(v => {
     if (v && v.celebrate && mo) v.celebrate(mo.grew ? 'grow' : 'item');
     if (mo && view.isConnected) { markPetSeen(p); save(); }
@@ -1311,14 +1317,14 @@ function bindPetCard(p) {
 }
 
 function petMomentHtml(p) {
-  const mo = p.pet && PR.pendingMoment(p.pet, petStage(p));
+  const mo = hasPet(p) && PR.pendingMoment(p.pet, grownStage(p));
   if (!mo) return '';
   return `<div class="pet-moment stack"><div class="pet-view small" id="petMoment"></div><h2 style="margin:0">${petMomentText(p, mo)}</h2></div>`;
 }
 function bindPetMoment(p) {
   const el = document.getElementById('petMoment');
   if (!el) return;
-  const mo = PR.pendingMoment(p.pet, petStage(p));
+  const mo = PR.pendingMoment(p.pet, grownStage(p));
   markPetSeen(p); save();   // seen once, even if she leaves before the 3D view loads
   showCreature(el, p, { interactive: false }).then(v => { if (v && mo) v.celebrate(mo.grew ? 'grow' : 'item'); });
 }
@@ -1360,10 +1366,10 @@ function showHatch() {
 
 function showDen() {
   const p = me(); if (!p) return showProfiles();
-  if (!p.pet || !p.pet.species) return showHatch();
+  if (!hasPet(p)) return showHatch();
   applyTheme(p.theme);
-  const pet = p.pet, stage = petStage(p), sp = PR.SPECIES[pet.species];
-  const mo = PR.pendingMoment(pet, stage), colors = PR.colorsUnlocked(stage);
+  const pet = p.pet, stage = petStage(p), sp = PR.SPECIES[pet.species];   // pet: for drawing this screen only
+  const mo = PR.pendingMoment(pet, grownStage(p)), colors = PR.colorsUnlocked(stage);
   const slotName = { head: 'Head', neck: 'Neck', back: 'Back' };
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Home</button></div>
@@ -1385,21 +1391,25 @@ function showDen() {
     </div>`);
   document.getElementById('back').onclick = showHome;
   const el = document.getElementById('petView');
-  let view = null;
+  let view = null, loaded = false;
   showCreature(el, p, { interactive: true, onPet: () => sfx.good() }).then(v => {
-    view = v;
+    view = v; loaded = true;
     if (v && mo) v.celebrate(mo.grew ? 'grow' : 'item');
     if (mo && el.isConnected) { markPetSeen(p); save(); }
   });
   // Update in place: no re-render, so scroll position, focus and the WebGL view stay put.
+  // Reads p.pet on each tap: a sync merge swaps in a new pet object.
   const change = (fn, row) => {
-    fn(); pet.updated = Date.now(); save();
-    row.forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.wear ? pet.wear[PR.ITEM_BY_ID[b.dataset.wear].slot] === b.dataset.wear : (pet.color || 0) === +b.dataset.color)); });
-    if (view) view.update(petLook(p)); else el.innerHTML = petFallbackHtml(p);
+    if (!hasPet(p)) return showHatch();   // reset on another device
+    const cur = p.pet;
+    fn(cur); cur.updated = Date.now(); save();
+    row.forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.wear ? cur.wear[PR.ITEM_BY_ID[b.dataset.wear].slot] === b.dataset.wear : (cur.color || 0) === +b.dataset.color)); });
+    if (view) view.update(petLook(p));
+    else if (loaded) el.innerHTML = petFallbackHtml(p);   // still loading: the mount draws the new look
   };
-  bindAll('[data-wear]', b => change(() => { const it = PR.ITEM_BY_ID[b.dataset.wear]; pet.wear[it.slot] = pet.wear[it.slot] === it.id ? null : it.id; },
+  bindAll('[data-wear]', b => change(cur => { const it = PR.ITEM_BY_ID[b.dataset.wear]; cur.wear[it.slot] = cur.wear[it.slot] === it.id ? null : it.id; },
     [...document.querySelectorAll('[data-wear]')].filter(x => PR.ITEM_BY_ID[x.dataset.wear].slot === PR.ITEM_BY_ID[b.dataset.wear].slot)));
-  bindAll('[data-color]', b => change(() => { pet.color = +b.dataset.color; }, [...document.querySelectorAll('[data-color]')]));
+  bindAll('[data-color]', b => change(cur => { cur.color = +b.dataset.color; }, [...document.querySelectorAll('[data-color]')]));
 }
 
 /* ----- Journal ----- */
@@ -2497,7 +2507,7 @@ function showParents() {
       return `<section class="card gu-card" aria-label="${esc(p.name)}">
         <div class="gu-head"><span class="gu-av">${p.avatar}</span><div><h2>${esc(p.name)}</h2><span class="muted">${esc(levelsText(p))}</span></div>
           <span class="chip">🔥 ${plural(streakOf(p), 'day')}</span></div>
-        ${p.pet && p.pet.species ? `<p class="muted gu-note">${PR.SPECIES[p.pet.species].emoji} ${esc(p.pet.name)} the ${PR.SPECIES[p.pet.species].name} · ${PR.STAGES[petStage(p)].name} · ${p.pet.items.length} of ${PR.ITEMS.length} items</p>` : ''}
+        ${hasPet(p) ? `<p class="muted gu-note">${PR.SPECIES[p.pet.species].emoji} ${esc(p.pet.name)} the ${PR.SPECIES[p.pet.species].name} · ${PR.STAGES[petStage(p)].name} · ${p.pet.items.length} of ${PR.ITEMS.length} items</p>` : ''}
         <div><h3>This week</h3>${dayDots(p, 7)}
           <p class="muted gu-note">${played.length || mins ? `${plural(played.length, 'activity')}${mins ? ` · about ${mins} min` : ''} · ${plural(questsThisWeek(p), 'daily quest')}` : `${plural(questsThisWeek(p), 'daily quest')} · missions and minutes show from ${esc(state.logStart)}`}</p></div>
         <div><h3>Stuck on</h3>${stuck.length ? `<div class="facts">${stuck.map(stuckChip).join('')}</div>` : '<p class="muted gu-note">Nothing tricky right now. Nice!</p>'}</div>
