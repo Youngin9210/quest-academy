@@ -11,8 +11,8 @@
 
   // A Home Screen app on iPadOS gets its own storage, separate from Safari: on the local-only path the
   // Home Screen step comes first (everything is set up inside the app). Other paths keep it last (the
-  // family account carries the kids over).
-  const PATHS = { invite: ['family', 'recovery', 'kids'], local: ['pin', 'kids'], signin: ['kids'] };
+  // family account carries the kids over). 'account' creates a new family account, with or without an invite.
+  const PATHS = { account: ['family', 'recovery', 'kids'], local: ['pin', 'kids'], signin: ['kids'] };
   function setupSteps(path, needsHomeScreen) {
     if (path === 'local') return needsHomeScreen ? ['homescreen', ...PATHS.local] : PATHS.local.slice();
     return [...(PATHS[path] || PATHS.signin), ...(needsHomeScreen ? ['homescreen'] : [])];

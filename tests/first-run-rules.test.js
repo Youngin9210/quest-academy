@@ -11,21 +11,20 @@ test('firstScreen', () => {
 });
 
 test('setupSteps per path, home screen only when needed', () => {
-  assert.deepEqual(F.setupSteps('invite', true), ['family', 'recovery', 'kids', 'homescreen']);
-  assert.deepEqual(F.setupSteps('invite', false), ['family', 'recovery', 'kids']);
+  assert.deepEqual(F.setupSteps('account', true), ['family', 'recovery', 'kids', 'homescreen']);
+  assert.deepEqual(F.setupSteps('account', false), ['family', 'recovery', 'kids']);
   assert.deepEqual(F.setupSteps('local', true), ['homescreen', 'pin', 'kids']);
   assert.deepEqual(F.setupSteps('local', false), ['pin', 'kids']);
   assert.deepEqual(F.setupSteps('signin', true), ['kids', 'homescreen']);
-  assert.deepEqual(F.setupSteps('signin', false), ['kids']);
-});
+  assert.deepEqual(F.setupSteps('signin', false), ['kids']);});
 
 test('stepOf', () => {
-  assert.deepEqual(F.stepOf('kids', 'invite', true), { step: 3, total: 4 });
+  assert.deepEqual(F.stepOf('kids', 'account', true), { step: 3, total: 4 });
   assert.deepEqual(F.stepOf('homescreen', 'local', true), { step: 1, total: 3 });
   assert.deepEqual(F.stepOf('pin', 'local', true), { step: 2, total: 3 });
   assert.deepEqual(F.stepOf('kids', 'local', true), { step: 3, total: 3 });
   assert.deepEqual(F.stepOf('pin', 'local', false), { step: 1, total: 2 });
-  assert.deepEqual(F.stepOf('homescreen', 'invite', true), { step: 4, total: 4 });
+  assert.deepEqual(F.stepOf('homescreen', 'account', true), { step: 4, total: 4 });
   assert.deepEqual(F.stepOf('homescreen', 'local', false), {});
   assert.deepEqual(F.stepOf('family', 'signin', false), {});
   assert.deepEqual(F.stepOf('kids', 'signin', false), {});   // a single step shows no "Step 1 of 1"

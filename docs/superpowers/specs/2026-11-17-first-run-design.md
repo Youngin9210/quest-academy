@@ -13,7 +13,7 @@ Today the first screen mixes a 4-step grown-up checklist, a "New player" button,
 | Situation | First screen |
 |---|---|
 | Opens an invite link (`#invite=…`) | Welcome → guided family setup |
-| No players on this device, not signed in, no invite | Welcome with **Sign in to our family** as the main action |
+| No players on this device, not signed in, no invite | Welcome with **Set up our family** as the main action (open sign-up, no invite needed) |
 | Signed in, no players yet (e.g. closed the app mid-setup) | Guided setup resumes at **Add your kids** |
 | Players exist | **Who's playing?** (kids only) |
 | A player opens the app for the first time (new player, no progress) | Kid welcome (world, avatar, 3-card tour), then her home screen |
@@ -22,22 +22,23 @@ Existing families and players see none of the new first-run screens: the kid wel
 
 ## Part 1: grown-ups
 
-All setup screens share one layout: a centered card (max ~560px), a step indicator ("Step 2 of 4") where it applies, one primary button, and at most one secondary text link. Copy is short and plain. The space theme is used throughout setup (as the current profiles and Grown-ups screens do).
+All setup screens share one layout: a card (max ~560px) centered horizontally and vertically in the viewport on tall screens (scrolls normally on short ones), a step indicator ("Step 2 of 4") where it applies, one primary button, and at most one secondary text link. Copy is short and plain. The space theme is used throughout setup (as the current profiles and Grown-ups screens do).
 
 ### Welcome
-- The four world icons, the title "Quest Academy", and one line: "Practice that matches what your kids are learning in school: math, reading, writing, science, social studies and typing."
-- Three short points, each with an icon:
-  - 🎯 Set to each child's grade (2nd–5th), subject by subject.
-  - 🔁 Missed questions come back until they stick.
-  - 📊 You see what each child has mastered.
-- With an invite: primary **Set up our family**; secondary "Already have a family account? Sign in".
-- Without an invite: primary **Sign in to our family**; secondary "Use on this device only" (see Local-only setup).
+- A wordmark (a small drawn star mark above the title "Quest Academy"; no emojis on grown-up setup screens), and one line: "Practice that matches what your kids are learning in school: math, reading, writing, science, social studies and typing."
+- Three short points, each with a drawn line icon (target, loop arrow, bar chart; inline SVG in the theme accent):
+  - Set to each child's grade (2nd–5th), subject by subject.
+  - Missed questions come back until they stick.
+  - You see what each child has mastered.
+- With or without an invite: primary **Set up our family**; secondary "Already have a family account? Sign in". Without an invite the family is created by open sign-up (capped per IP on the server).
+- Without a sync server (the GitHub Pages copy): one **Get started** button, the local-only path.
 
-### Step 1 of 4: Create your family (invite only)
-- Family name, password, password again (existing signup call and rules).
+### Step 1 of 4: Create your family
+- Family name, password, password again (signup call; sends `invite` only when there is one).
+- Without an invite, a small link at the bottom: "Rather not make an account? Use on this device only" (see Local-only setup).
 - Errors show inline under the form (not only a toast).
 
-### Step 2 of 4: Recovery code (invite only)
+### Step 2 of 4: Recovery code
 - The existing recovery code screen, restyled to the shared layout. Primary: **I wrote it down**.
 
 ### Step 3 of 4: Add your kids
@@ -51,7 +52,7 @@ All setup screens share one layout: a centered card (max ~560px), a step indicat
 - Primary **Done**; secondary "Skip for now".
 
 ### All set
-- "You're all set! Hand the iPad to Mia and Ava." (the kids' names, joined naturally).
+- A drawn check mark (no emoji), "You're all set! Hand the iPad to Mia and Ava." (the kids' names, joined naturally).
 - One line for signed-in families: "On other devices, open learn.kmydev.com and sign in with your family name."
 - Primary **Go to Who's playing**.
 
@@ -93,7 +94,6 @@ No read-aloud on the tour: the device voice is synthetic and the family prefers 
 - A grown-up can still edit a player's name, grade, levels, world and avatar from the player's settings as today.
 
 ## Out of scope
-- Changes to the invite/signup server API.
 - Reworking the Grown-ups page beyond the Add a child button and removing the old checklist.
 - Read-aloud for the tour.
 

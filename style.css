@@ -566,7 +566,14 @@ section.card { margin-top: 16px; }
 @media (max-width: 560px) { .pet-view.small { width: 96px; height: 96px; } }
 
 /* ----- First run ----- */
-.setup-card { max-width: 560px; margin: 24px auto 0; padding: 28px 26px; }
+/* Setup screens sit in the middle of the viewport on tall screens; on short ones the page just scrolls.
+   The wrapper fills the viewport minus #app's own top and bottom padding; the back bar stays on top. */
+.setup-wrap { display: flex; flex-direction: column; min-height: calc(100vh - 56px); min-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - 40px); }
+.setup-wrap > .topbar { flex: none; }
+.setup-center { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.setup-card { width: 100%; max-width: 560px; margin: 0 auto; padding: 28px 26px; }
+.setup-actions .linkish { text-align: center; text-wrap: balance; }
+.setup-aside { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 4px; text-align: center; color: var(--muted); }
 .setup-card h1 { margin: 0; }
 .setup-card h2 { margin: 0; font-size: 1.6rem; }
 .setup-card .text { width: 100%; max-width: none; }
@@ -574,10 +581,13 @@ section.card { margin-top: 16px; }
 .setup-step { margin: 0; font-weight: 600; color: var(--accent-text); font-size: .95rem; letter-spacing: .02em; }
 .welcome-hero { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .welcome-hero .big { font-size: 3rem; line-height: 1; }
+.wordmark-mark, .done-mark { display: grid; place-items: center; color: var(--accent); line-height: 0; }
+.qa-mark { width: 48px; height: 48px; }
 .welcome-lede { font-size: 1.2rem; line-height: 1.45; margin: 0; max-width: 34ch; }
 .welcome-points { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 10px; }
 .welcome-points li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--ink) 6%, transparent); line-height: 1.35; }
-.welcome-points li span { font-size: 1.6rem; flex: none; }
+.welcome-points .wp-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; flex: none; line-height: 0;
+  color: var(--accent2); background: color-mix(in srgb, var(--accent2) 16%, transparent); }
 .setup-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 6px; }
 .big-btn { width: 100%; font-size: 1.2rem; padding: 14px 20px; }
 .big-btn:disabled { opacity: .45; cursor: default; }

@@ -1017,7 +1017,7 @@ const FR = window.FirstRun || { firstScreen: ({ players }) => players ? 'profile
 function showProfiles() {
   state.current = null; writeStore();
   applyTheme('space');
-  if (state.sync.pendingRecovery && !state.profiles.length) { setup.path = 'invite'; return showSetupRecovery(state.sync.pendingRecovery); }
+  if (state.sync.pendingRecovery && !state.profiles.length) { setup.path = 'account'; return showSetupRecovery(state.sync.pendingRecovery); }
   const route = FR.firstScreen({ locked: !!(state.grownPin || state.sync.token), players: state.profiles.length });
   if (route === 'welcome') return showWelcome(pendingInvite());
   if (route === 'add-kids') { setup = { path: state.sync.token ? 'signin' : 'local', invite: null, routed: true }; return showSetupKids(); }
@@ -1109,11 +1109,13 @@ function pendingInvite() { try { const c = sessionStorage.getItem(INVITE_KEY); r
 function clearInvite() { try { sessionStorage.removeItem(INVITE_KEY); } catch (e) { /* ignore */ } setup.invite = null; }
 function setupLayout(inner, opts = {}) {
   applyTheme('space');
-  render(`${opts.back ? '<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>' : ''}
-    <section class="card setup-card stack">
-      ${opts.step ? `<p class="setup-step">Step ${opts.step} of ${opts.total}</p>` : ''}
-      ${inner}
-    </section>${opts.after || ''}`, opts.name || '');
+  render(`<div class="setup-wrap">${opts.back ? '<div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>' : ''}
+    <div class="setup-center">
+      <section class="card setup-card stack">
+        ${opts.step ? `<p class="setup-step">Step ${opts.step} of ${opts.total}</p>` : ''}
+        ${inner}
+      </section>${opts.after || ''}
+    </div></div>`, opts.name || '');
   focusHeading();
   if (opts.back) document.getElementById('back').onclick = opts.back;
 }
@@ -1130,35 +1132,43 @@ function clearErrors(form) {
   form.querySelectorAll('.form-error').forEach(e => { e.textContent = ''; e.hidden = true; });
 }
 
+// Drawn icons for the grown-up screens (24px line icons in the theme accent; no emojis here).
+const svgIcon = (body, size = 24) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+const ICONS = {
+  mark: '<svg class="qa-mark" viewBox="0 0 48 48" width="48" height="48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".45"/><path d="M24 7.5 28 20l12.5 4L28 28l-4 12.5L20 28 7.5 24 20 20Z" fill="currentColor" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>',
+  target: svgIcon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
+  loop: svgIcon('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
+  chart: svgIcon('<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/>'),
+  done: svgIcon('<circle cx="12" cy="12" r="9.5"/><path d="m7.5 12.5 3 3 6-6.5"/>', 48),
+};
+function startLocalSetup() { setup.path = 'local'; needsHomeScreen() ? showSetupHome() : showSetupPin(); }
+// Back from the first local-only step: to Create your family when accounts exist, else to the welcome.
+const localBack = () => SYNC_URL ? showSetupFamily() : showWelcome(null);
+
 function showWelcome(invite) {
-  setup = { path: invite ? 'invite' : 'signin', invite };
-  const main = invite ? ['go', 'Set up our family'] : SYNC_URL ? ['go', 'Sign in to our family'] : ['alt', 'Get started'];
-  const alt = invite ? 'Already have a family account? Sign in' : SYNC_URL ? 'Use on this device only' : '';
+  setup = { path: 'account', invite };
   setupLayout(`
     <div class="welcome-hero">
-      <div class="big" aria-hidden="true">🚀🐠🐶🧁</div>
+      <span class="wordmark-mark">${ICONS.mark}</span>
       <h1>Quest Academy</h1>
       <p class="welcome-lede">Practice that matches what your kids are learning in school: math, reading, writing, science, social studies and typing.</p>
     </div>
     <ul class="welcome-points">
-      <li><span aria-hidden="true">🎯</span>Set to each child's grade (2nd–5th), subject by subject.</li>
-      <li><span aria-hidden="true">🔁</span>Missed questions come back until they stick.</li>
-      <li><span aria-hidden="true">📊</span>You see what each child has mastered.</li>
+      <li><span class="wp-icon">${ICONS.target}</span>Set to each child's grade (2nd–5th), subject by subject.</li>
+      <li><span class="wp-icon">${ICONS.loop}</span>Missed questions come back until they stick.</li>
+      <li><span class="wp-icon">${ICONS.chart}</span>You see what each child has mastered.</li>
     </ul>
     <div class="setup-actions">
-      <button class="btn big-btn" id="${main[0]}">${main[1]}</button>
-      ${alt ? `<button class="linkish" id="alt">${alt}</button>` : ''}
+      ${SYNC_URL ? `<button class="btn big-btn" id="go">Set up our family</button>
+        <button class="linkish" id="signIn">Already have a family account? Sign in</button>`
+        : '<button class="btn big-btn" id="local">Get started</button>'}
       ${invite && state.profiles.length ? '<button class="linkish" id="notNow">Not now</button>' : ''}
     </div>`, { name: 'profiles' });
-  const go = document.getElementById('go'), altBtn = document.getElementById('alt');
-  if (invite) {
-    go.onclick = () => showSetupFamily();
-    altBtn.onclick = () => showSetupSignIn();
-    const nn = document.getElementById('notNow'); if (nn) nn.onclick = () => { clearInvite(); showProfiles(); };
-  } else {
-    if (go) go.onclick = () => showSetupSignIn();
-    altBtn.onclick = () => { setup.path = 'local'; needsHomeScreen() ? showSetupHome() : showSetupPin(); };
-  }
+  const $b = id => document.getElementById(id);
+  if ($b('go')) $b('go').onclick = () => showSetupFamily();
+  if ($b('signIn')) $b('signIn').onclick = () => showSetupSignIn();
+  if ($b('local')) $b('local').onclick = startLocalSetup;
+  if ($b('notNow')) $b('notNow').onclick = () => { clearInvite(); showProfiles(); };
 }
 
 function showSetupSignIn(back) {
@@ -1171,7 +1181,7 @@ function showSetupSignIn(back) {
       <p class="form-error" id="sfErr" role="alert" hidden></p>
       <div class="setup-actions"><button class="btn big-btn" type="submit">Sign in</button></div>
     </form>
-    ${setup.invite ? '' : '<p class="muted">New family? You\'ll need an invite link from the person who shared Quest Academy.</p>'}`,
+    <p class="muted">New family? Go back and tap <b>Set up our family</b>.</p>`,
     { back: back || (() => showWelcome(setup.invite)) });
   let signed = false;
   document.getElementById('sf').onsubmit = async e => {
@@ -1204,7 +1214,7 @@ function showSetupPin() {
       <input class="text pin" id="p2" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8">
       <p class="form-error" id="pErr" role="alert" hidden></p>
       <div class="setup-actions"><button class="btn big-btn" type="submit">Save PIN</button></div>
-    </form>`, { ...stepInfo('pin'), back: () => needsHomeScreen() ? showSetupHome() : showWelcome(null) });
+    </form>`, { ...stepInfo('pin'), back: () => needsHomeScreen() ? showSetupHome() : localBack() });
   document.getElementById('pf').onsubmit = async e => {
     e.preventDefault();
     clearErrors(e.target);
@@ -1295,7 +1305,7 @@ function showSetupHome() {
     <div class="setup-actions">
       <button class="btn big-btn" id="done">${first ? "I've added it" : 'Done'}</button>
       <button class="linkish" id="skip">${first ? 'Set up here in Safari instead' : 'Skip for now'}</button>
-    </div>`, { ...stepInfo('homescreen'), back: first ? () => showWelcome(null) : null });
+    </div>`, { ...stepInfo('homescreen'), back: first ? localBack : null });
   document.getElementById('done').onclick = first ? showSetupOpenIcon : showSetupDone;
   document.getElementById('skip').onclick = first ? showSetupPin : showSetupDone;
 }
@@ -1310,7 +1320,7 @@ function showSetupOpenIcon() {
 function showSetupDone() {
   const names = FR.joinNames(state.profiles.map(p => p.name));
   setupLayout(`<div class="welcome-hero">
-      <div class="big" aria-hidden="true">🎉</div>
+      <span class="done-mark">${ICONS.done}</span>
       <h1>You're all set!</h1>
       <p class="welcome-lede">Hand it to ${esc(names)}.</p>
     </div>
@@ -3162,7 +3172,9 @@ async function showInvite(code) {
   showWelcome(code);
 }
 
+// Create a family account: with an invite (setup.invite) or, since open sign-up, without one.
 function showSetupFamily() {
+  setup.path = 'account';
   setupLayout(`<h2>Create your family</h2>
     <p class="muted">You'll use the family name and password to open the Grown-ups page and to sign in on other devices.</p>
     <form id="ff" class="stack" autocomplete="on">
@@ -3175,7 +3187,10 @@ function showSetupFamily() {
       <p class="muted" style="margin:0">🔒 Only first names, game progress and journal writing are stored. No emails.</p>
       <p class="form-error" id="fErr" role="alert" hidden></p>
       <div class="setup-actions"><button class="btn big-btn" type="submit">Create our family</button></div>
-    </form>`, { ...stepInfo('family'), back: () => showWelcome(setup.invite) });
+    </form>
+    ${setup.invite ? '' : '<p class="setup-aside">Rather not make an account? <button class="linkish" id="localOnly">Use on this device only</button></p>'}`,
+    { ...stepInfo('family'), back: () => showWelcome(setup.invite) });
+  const lo = document.getElementById('localOnly'); if (lo) lo.onclick = startLocalSetup;
   document.getElementById('ff').onsubmit = async e => {
     e.preventDefault();
     const name = document.getElementById('fName').value.trim(), pw = document.getElementById('fPw').value;
@@ -3183,9 +3198,9 @@ function showSetupFamily() {
     if (pw !== document.getElementById('fPw2').value) return formError('fErr', "The passwords don't match.", ['fPw', 'fPw2']);
     const btn = e.target.querySelector('button[type=submit]'); if (btn.disabled) return; btn.disabled = true;
     try {
-      const r = await syncCall({ action: 'signup', invite: setup.invite, family: name, password: pw });
+      const r = await syncCall({ action: 'signup', ...(setup.invite ? { invite: setup.invite } : {}), family: name, password: pw });
       await signedIn(r, () => {}); unlockGrownup(); clearInvite();
-      setup.path = 'invite';   // keep the invite step numbers after clearInvite
+      setup.path = 'account';
       showSetupRecovery(r.recovery);
     } catch (err) { btn.disabled = false; formError('fErr', isOffline(err) ? "You're offline. Connect to the internet to create your family." : err.message, isOffline(err) ? [] : ['fName']); }
   };
