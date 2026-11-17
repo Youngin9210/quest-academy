@@ -1287,12 +1287,18 @@ function petMomentText(p, mo) {
   if (mo.items.length) parts.push(`New for ${nm}: ${mo.items.map(id => `${PR.ITEM_BY_ID[id].icon} ${esc(PR.ITEM_BY_ID[id].name)}`).join(', ')}`);
   return parts.join(' ');
 }
-function petProgressText(p) {
-  const pr = PR.progress(petMastered(p), p.pet && p.pet.seenStage);
-  if (pr.toNext === null) return 'Fully grown!';
-  const verb = pr.stage === 0 ? 'to hatch' : 'to grow';
-  return `${plural(pr.toNext, 'more mastered question')} ${verb}`;
+// What she's working toward next, in kid words: icon, sentence, and how far along (0–100)
+function petGoal(p) {
+  const pr = PR.progress(petMastered(p), p.pet && p.pet.seenStage), nm = esc(p.pet.name);
+  if (pr.toNext === null) return { icon: '🌟', text: `${nm} is fully grown!`, pct: 100, count: '' };
+  const from = PR.STAGES[pr.stage].min, to = PR.STAGES[pr.stage + 1].min;
+  const pct = Math.round(Math.min(1, Math.max(0, (pr.mastered - from) / (to - from))) * 100);
+  const goal = ['hatch', 'grow into a Kid', 'grow up', 'become Legendary'][pr.stage];
+  return { icon: pr.stage === 0 ? '🥚' : '⭐', text: `${plural(pr.toNext, 'more mastered question')} to ${goal}!`, pct,
+    count: `${Math.max(0, pr.mastered - from)} of ${to - from}` };
 }
+function petProgressText(p) { return petGoal(p).text; }
+const petBar = pct => `<span class="pet-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>`;
 function petCardHtml(p) {
   if (!hasPet(p)) return `<button class="card pet-card pet-egg-card" id="petCard">
       <span class="pet-egg-icon" aria-hidden="true">🥚</span>
@@ -1301,7 +1307,7 @@ function petCardHtml(p) {
   return `<button class="card pet-card" id="petCard">
       <span class="pet-view small" id="petView"></span>
       <span class="pet-info"><b>${esc(p.pet.name)}</b><span class="muted">${PR.STAGES[petStage(p)].name} ${sp.name}</span>
-        ${mo ? `<span class="pet-new">${petMomentText(p, mo)}</span>` : `<span class="muted">${petProgressText(p)}</span>`}</span></button>`;
+        ${mo ? `<span class="pet-new">${petMomentText(p, mo)}</span>` : `<span class="muted">${petProgressText(p)}</span>${petBar(petGoal(p).pct)}`}</span></button>`;
 }
 function bindPetCard(p) {
   const card = document.getElementById('petCard');
@@ -1374,10 +1380,14 @@ function showDen() {
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Home</button></div>
     <div class="card stack den">
-      <div class="den-head"><h1>${esc(pet.name)}</h1><span class="muted">${PR.STAGES[stage].name} ${sp.name} · ${petProgressText(p)}</span></div>
+      <div class="den-head"><h1>${esc(pet.name)}</h1><span class="muted">${PR.STAGES[stage].name} ${sp.name}</span></div>
       ${mo ? `<p class="pet-new big">${petMomentText(p, mo)}</p>` : ''}
       <div class="pet-view large" id="petView" role="img" aria-label="${esc(pet.name)} the ${sp.name}"></div>
       <p class="muted center den-hint">Drag to turn ${esc(pet.name)}. Tap to pet.</p>
+      ${(() => { const g = petGoal(p); return `<div class="pet-goal">
+        <span class="pet-goal-icon" aria-hidden="true">${g.icon}</span>
+        <div class="pet-goal-main"><b>${g.text}</b>
+          ${g.count ? `${petBar(g.pct)}<span class="muted">${g.count} · Get a question right on the first try, two times in a row, to master it.</span>` : ''}</div></div>`; })()}
       ${['head', 'neck', 'back'].map(slot => {
         const items = PR.ITEMS.filter(it => it.slot === slot);
         return `<div><span class="lbl">${slotName[slot]}</span><div class="wardrobe">${items.map(it => pet.items.includes(it.id)
