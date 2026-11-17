@@ -591,3 +591,6 @@ section.card { margin-top: 16px; }
 .hs-steps li { display: flex; align-items: center; gap: 14px; font-size: 1.1rem; }
 .hs-pic { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: color-mix(in srgb, var(--accent2) 18%, transparent); color: var(--accent2); font-size: 1.6rem; flex: none; }
 .hero.who { padding-top: 40px; }
+
+.gu-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.gu-title h1 { margin: 0; }

@@ -2633,7 +2633,7 @@ function showParents() {
   const signedIn = SYNC_URL && state.sync.token;
   render(`
     <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
-    <h1>Grown-ups</h1>
+    <div class="gu-title"><h1>Grown-ups</h1><button class="btn" id="addChild">+ Add a child</button></div>
     ${state.profiles.length ? '' : '<p>No players yet. Tap "New player" on the Who\'s playing screen.</p>'}
     <div class="gu-grid">
     ${state.profiles.map(p => {
@@ -2657,9 +2657,21 @@ function showParents() {
     <div class="stack">${syncCardHtml()}${howItWorksHtml()}</div>
   `);
   document.getElementById('back').onclick = showProfiles;
+  document.getElementById('addChild').onclick = showAddChild;
   bindSyncCard(showParents);
   bindAll('[data-detail]', el => showParentDetail(el.dataset.detail));
   if (!state.setupSeen) { state.setupSeen = true; writeStore(); }
+}
+
+function showAddChild() {
+  const f = { name: '', grade: null, button: 'Add child' };
+  const draw = () => {
+    setupLayout(`<h2>Add a child</h2>
+      <p class="muted">A first name and grade. She picks her world and look the first time she plays.</p>
+      ${childFormHtml(f, "Child's first name")}`, { back: showParents });
+    bindChildForm(f, draw, () => { toast('Added!'); showParents(); });
+  };
+  draw();
 }
 
 function showParentDetail(id, journalShown = 5) {
