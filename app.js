@@ -1012,7 +1012,7 @@ function showProfiles() {
   state.current = null; writeStore();
   applyTheme('space');
   const route = FR.firstScreen({ locked: !!(state.grownPin || state.sync.token), players: state.profiles.length });
-  if (route === 'welcome') return showWelcome(null);
+  if (route === 'welcome') return showWelcome(pendingInvite());
   if (route === 'add-kids') { setup.path = state.sync.token ? 'signin' : 'local'; return showSetupKids(); }
   render(`
     <div class="hero stack who"><h1>Who's playing?</h1></div>
@@ -3009,6 +3009,7 @@ async function showInvite(code) {
   history.replaceState(null, '', location.pathname);
   applyTheme('space');
   if (state.sync.token) {
+    clearInvite();
     render(`<div class="card stack center" style="margin-top:30px"><h2>You're already signed in</h2>
       <p>This device is signed in to <b>${esc(state.sync.family)}</b>. To create a different family, sign out first on the Grown-ups page.</p>
       <div class="row-actions"><button class="btn" id="ok">OK</button></div></div>`);
@@ -3016,42 +3017,52 @@ async function showInvite(code) {
   }
   try { await syncCall({ action: 'invite_check', invite: code }); }
   catch (e) {
+    clearInvite();
     render(`<div class="card stack center" style="margin-top:30px"><h2>Invite link not working</h2><p>${esc(e.message)}</p>
       <div class="row-actions"><button class="btn" id="ok">OK</button></div></div>`);
     document.getElementById('ok').onclick = showProfiles; return;
   }
-  render(`
-    <div class="hero stack"><div class="big">🚀🐠🐶🧁</div><h1>Welcome to Quest Academy!</h1>
-      <p class="muted" style="font-size:1.15rem">You've been invited. Create your family's account so your kids' progress syncs across your devices.</p></div>
-    <div class="card stack" style="max-width:520px;margin:20px auto 0">
-      <label class="lbl" for="suName">Family name</label>
-      <input class="text" id="suName" placeholder="e.g. The Garcias" autocomplete="username" autocapitalize="words" maxlength="40">
-      <span class="muted" style="display:block;margin-top:-6px">You'll type this to sign in on other devices.</span>
-      <label class="lbl" for="suPw">Password</label>
-      <input class="text" id="suPw" type="password" placeholder="8+ characters" autocomplete="new-password">
-      <input class="text" id="suPw2" type="password" placeholder="Type it again" autocomplete="new-password">
-      <p class="muted" style="margin:0">🔒 Your family is private: nobody else can see your kids or their progress. Only first names, game progress and journal writing are stored. No emails.</p>
-      <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="suGo">Create our family</button></div>
-    </div>`);
-  document.getElementById('suGo').onclick = async () => {
-    const name = document.getElementById('suName').value.trim(), pw = document.getElementById('suPw').value;
-    if (pw !== document.getElementById('suPw2').value) return toast("Passwords don't match");
+  rememberInvite(code);   // a reload during setup comes back here
+  showWelcome(code);
+}
+
+function showSetupFamily() {
+  setupLayout(`<h2>Create your family</h2>
+    <p class="muted">You'll use the family name and password to open the Grown-ups page and to sign in on other devices.</p>
+    <form id="ff" class="stack" autocomplete="on">
+      <label class="lbl" for="fName">Family name</label>
+      <input class="text" id="fName" placeholder="e.g. The Garcias" autocomplete="username" autocapitalize="words" maxlength="40">
+      <label class="lbl" for="fPw">Password</label>
+      <input class="text" id="fPw" type="password" placeholder="8+ characters" autocomplete="new-password">
+      <label class="lbl" for="fPw2">Password again</label>
+      <input class="text" id="fPw2" type="password" autocomplete="new-password">
+      <p class="muted" style="margin:0">🔒 Only first names, game progress and journal writing are stored. No emails.</p>
+      <p class="form-error" id="fErr" role="alert" hidden></p>
+      <div class="setup-actions"><button class="btn big-btn" type="submit">Create our family</button></div>
+    </form>`, { ...stepInfo('family'), back: () => showWelcome(setup.invite) });
+  document.getElementById('ff').onsubmit = async e => {
+    e.preventDefault();
+    const name = document.getElementById('fName').value.trim(), pw = document.getElementById('fPw').value;
+    if (pw !== document.getElementById('fPw2').value) return formError('fErr', "The passwords don't match.");
     try {
-      const r = await syncCall({ action: 'signup', invite: code, family: name, password: pw });
-      await signedIn(r, () => {});
-      render(`<div class="card stack center" style="margin-top:30px;max-width:560px;margin-left:auto;margin-right:auto">
-        <h1>🎉 Welcome, ${esc(r.family)}!</h1>
-        <div class="recovery-box"><b>📝 Write down your recovery code</b><div class="code">${esc(r.recovery)}</div>
-          <span class="muted">If you ever forget your password, this code lets you set a new one. It won't be shown again.</span></div>
-        <p>Next: add your kids as players. On your other devices, open this site, tap <b>Grown-ups</b>, and sign in with your family name and password.</p>
-        <div class="row-actions"><button class="btn" id="go">I wrote it down. Let's go!</button></div></div>`);
-      document.getElementById('go').onclick = () => { delete state.sync.pendingRecovery; writeStore(); showProfiles(); };
-    } catch (e) { toast(e.message); }
+      const r = await syncCall({ action: 'signup', invite: setup.invite, family: name, password: pw });
+      await signedIn(r, () => {}); unlockGrownup(); clearInvite();
+      setup.path = 'invite';   // keep the invite step numbers after clearInvite
+      showSetupRecovery(r.recovery);
+    } catch (err) { formError('fErr', /fetch|network/i.test(err.message) ? "You're offline. Connect to the internet to create your family." : err.message); }
   };
 }
 
+function showSetupRecovery(code) {
+  setupLayout(`<h2>Write down your recovery code</h2>
+    <p class="muted">If you ever forget the password, this code lets you set a new one. It won't be shown again.</p>
+    <div class="recovery-box"><div class="code">${esc(code)}</div></div>
+    <div class="setup-actions"><button class="btn big-btn" id="go">I wrote it down</button></div>`, stepInfo('recovery'));
+  document.getElementById('go').onclick = () => { delete state.sync.pendingRecovery; writeStore(); showSetupKids(); };
+}
+
 /* ---------- boot ---------- */
-const inviteCode = SYNC_URL && (location.hash.match(/^#invite=([a-f0-9]{32})$/) || [])[1];
+const inviteCode = SYNC_URL && ((location.hash.match(/^#invite=([a-f0-9]{32})$/) || [])[1] || (!state.sync.token && pendingInvite()));
 if (inviteCode) showInvite(inviteCode);
 else if (me()) openPlayer(me()); else showProfiles();
 if (SYNC_URL && state.sync.code && !state.sync.token) {
