@@ -2686,6 +2686,18 @@ function mergePlayer(a, b) {
   return m;
 }
 
+// Merges a pulled copy into the local player object in place (same object), so a screen that holds the
+// player (den, hatch, journal, edit profile, a pending markPetSeen) keeps saving to the one in state.
+// Returns whether anything this device shows changed.
+function mergeInto(local, remote) {
+  const merged = mergePlayer(local, remote);
+  if (pjson(merged) !== pjson(remote)) { merged.updated = Date.now(); merged.dirty = true; } else merged.updated = remote.updated;
+  const changed = pjson(merged) !== pjson(local);
+  for (const k of Object.keys(local)) if (!(k in merged)) delete local[k];
+  Object.assign(local, merged);
+  return changed;
+}
+
 async function doSync() {
   if (!SYNC_URL || !state.sync.token || syncing) return;
   if (!navigator.onLine) { lastSyncError = 'offline'; return; }
@@ -2705,10 +2717,8 @@ async function doSync() {
       }
       const remote = { ...r.data, updated: r.updated };
       if (!local) { state.profiles.push(remote); snapshot[r.id] = pjson(remote); lastPoints[r.id] = remote.points || 0; changedView = true; continue; }
-      const merged = mergePlayer(local, remote);
-      if (pjson(merged) !== pjson(remote)) { merged.updated = Date.now(); merged.dirty = true; } else merged.updated = r.updated;
-      if (pjson(merged) !== pjson(local)) changedView = true;
-      state.profiles[i] = merged; snapshot[r.id] = pjson(merged); lastPoints[r.id] = merged.points || 0;
+      if (mergeInto(local, remote)) changedView = true;
+      snapshot[r.id] = pjson(local); lastPoints[r.id] = local.points || 0;
     }
     const dirty = state.profiles.filter(p => p.dirty || !p.updated);
     const push = [
