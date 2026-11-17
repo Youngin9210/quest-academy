@@ -5,7 +5,7 @@ import * as THREE from './lib/three-0.170.0.module.min.js';
 
 const R = window.PetRules;
 const SIZE = [0.85, 0.72, 0.86, 1, 1.1];        // overall scale per stage
-const HEAD_R = [0, 0.4, 0.37, 0.34, 0.34];      // head radius per stage (big heads when little)
+const HEAD_R = [0, 0.46, 0.43, 0.4, 0.4];      // head radius per stage (big heads when little)
 const BODY_R = 0.42, BODY_Y = 0.45;
 const DARK = 0x1d1b2f;
 
@@ -67,13 +67,13 @@ function buildCreature(look, tex) {
   const headY = BODY_Y + BODY_R * 0.9 + hr * 0.7;
   const g = new THREE.Group(), eyes = [];
   g.add(at(ball(BODY_R, body, 1, 1.08, 1), 0, BODY_Y, 0));
-  g.add(at(ball(BODY_R * 0.72, belly, 1, 1.05, 0.55), 0, BODY_Y - 0.03, BODY_R * 0.55));
+  g.add(at(ball(BODY_R * 0.68, belly, 1, 1.05, 0.45), 0, BODY_Y - 0.03, BODY_R * 0.8));
   g.add(at(ball(hr, body), 0, headY, 0.05));
   for (const s of [-1, 1]) {
-    const e = hr * 0.16, eye = at(ball(e, DARK), s * hr * 0.38, headY + hr * 0.1, hr * 0.88);
+    const e = hr * 0.17, eye = at(ball(e, DARK, 1, 1, 0.6), s * hr * 0.36, headY + hr * 0.08, 0.05 + hr * 0.93 - e * 0.2);   // sits on the head's surface
     eye.add(at(ball(e * 0.35, 0xffffff), e * 0.35, e * 0.4, e * 0.75));
     g.add(eye); eyes.push(eye);
-    const cheek = at(ball(hr * 0.12, 0xff9aa2, 1, 0.6, 0.4), s * hr * 0.62, headY - hr * 0.22, hr * 0.74);
+    const cheek = at(ball(hr * 0.12, 0xff9aa2, 1, 0.6, 0.35), s * hr * 0.6, headY - hr * 0.22, 0.05 + hr * 0.76);
     cheek.material.transparent = true; cheek.material.opacity = 0.75; g.add(cheek);
     g.add(at(ball(BODY_R * 0.3, body, 1, 0.6, 1.3), s * BODY_R * 0.5, 0.08, BODY_R * 0.25));       // feet
     if (st >= 2) g.add(at(ball(BODY_R * 0.22, body, 1, 1.4, 1), s * BODY_R * 0.95, BODY_Y, BODY_R * 0.25)); // arms
@@ -162,9 +162,9 @@ const GEAR = {
     return g;
   },
   glasses(a) {
-    const g = new THREE.Group(), y = a.headY + a.hr * 0.1, z = a.hr * 0.97;
-    for (const s of [-1, 1]) g.add(at(new THREE.Mesh(new THREE.TorusGeometry(a.hr * 0.18, a.hr * 0.03, 8, 20), mat(DARK)), s * a.hr * 0.38, y, z));
-    const bridge = at(cyl(0.008, 0.008, a.hr * 0.4, DARK), 0, y, z);
+    const g = new THREE.Group(), y = a.headY + a.hr * 0.08, z = 0.05 + a.hr * 0.96, frame = 0xd94b6a;   // in front of the eyes
+    for (const s of [-1, 1]) g.add(at(new THREE.Mesh(new THREE.TorusGeometry(a.hr * 0.23, a.hr * 0.05, 8, 24), mat(frame)), s * a.hr * 0.36, y, z));
+    const bridge = at(cyl(0.015, 0.015, a.hr * 0.3, frame), 0, y, z);
     bridge.rotation.z = Math.PI / 2; g.add(bridge);
     return g;
   },
@@ -172,7 +172,7 @@ const GEAR = {
     const g = new THREE.Group(), y = a.headY + a.hr * 0.15;
     const band = at(new THREE.Mesh(new THREE.TorusGeometry(a.hr * 1.0, 0.025, 8, 32), mat(0x26a69a)), 0, y, 0.03);
     band.rotation.x = Math.PI / 2; g.add(band);
-    for (const s of [-1, 1]) { const l = at(cyl(a.hr * 0.2, a.hr * 0.2, 0.08, 0x80deea), s * a.hr * 0.38, y, a.hr * 0.95); l.rotation.x = Math.PI / 2; g.add(l); }
+    for (const s of [-1, 1]) { const l = at(cyl(a.hr * 0.2, a.hr * 0.2, 0.08, 0x80deea), s * a.hr * 0.36, y, 0.05 + a.hr * 0.93); l.rotation.x = Math.PI / 2; g.add(l); }
     return g;
   },
   explorerhat(a) {
@@ -255,12 +255,12 @@ function setup(renderer, el, look, opts) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
-  camera.position.set(0, 1.25, 4.2); camera.lookAt(0, 0.6, 0);
+  camera.position.set(0, 1.45, 4.3); camera.lookAt(0, 0.8, 0);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8888aa, 1.6));
   const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(2, 4, 3); scene.add(sun);
 
   const stageRoot = new THREE.Group(); scene.add(stageRoot);
-  const pivot = new THREE.Group(); stageRoot.add(pivot);   // turns with dragging
+  const pivot = new THREE.Group(); pivot.rotation.y = -0.45; stageRoot.add(pivot);   // turns with dragging
   const mover = new THREE.Group(); pivot.add(mover);       // hops and bobs
   const tex = { sparkle: shared(sparkleTex()), heart: shared(heartTex()) };   // one of each per mount
   let ground = null, creature = null, gear = [], current = null;
