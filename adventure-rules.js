@@ -95,6 +95,7 @@
   }
 
   function finishBoss(adv) {
+    if (!bossReady(adv)) return null;
     adv.updated = Date.now();
     adv.stop = 0; adv.stops = [];
     if (adv.region < REGIONS - 1) { adv.region++; return 'region'; }
@@ -116,6 +117,21 @@
 
   // Higher is further along. A device still on the world picker is behind one that started the next world.
   const progressKey = adv => (adv.laps || 0) * 1000 + (adv.picking ? 0 : 1 + adv.region * 10 + adv.stop);
+
+  const int = (v, lo, hi) => { const n = Math.floor(Number(v)); return typeof v === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; };
+  const arr = v => Array.isArray(v) ? v : [];
+  function normalizeAdventure(adv) {
+    if (!WORLDS[adv.world]) { adv.world = 'space'; adv.region = 0; adv.stop = 0; adv.stops = []; }
+    adv.region = int(adv.region, 0, REGIONS - 1);
+    adv.stop = int(adv.stop, 0, STOPS);
+    adv.stops = arr(adv.stops).slice(0, STOPS);
+    adv.seenIntro = arr(adv.seenIntro);
+    adv.worldsDone = arr(adv.worldsDone);
+    adv.laps = int(adv.laps, 0, Infinity);
+    adv.next = int(adv.next, 0, Infinity);
+    adv.picking = !!adv.picking;
+    return adv;
+  }
 
   const clone = x => JSON.parse(JSON.stringify(x));
   const union = (x = [], y = []) => [...new Set([...x, ...y])];
@@ -141,7 +157,7 @@
 
   const api = { STOPS, STOP_LEN, BOSS_LEN, BOSS_WIN, REGIONS, WORLDS, WORLD_ORDER, regionKey, regionName, newAdventure,
     fillStops, repickStops, starsFor, typingStars, bossWon, bossReady, finishStop, finishBoss, nextWorlds, startWorld,
-    progressKey, mergeAdventure };
+    progressKey, mergeAdventure, normalizeAdventure };
   root.AdventureRules = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

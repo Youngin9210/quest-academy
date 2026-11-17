@@ -40,7 +40,7 @@ test('fillStops skips a subject with no missions', () => {
 
 test('fillStops only includes typing when it is in the subject list', () => {
   const a = AR.newAdventure('space'); AR.fillStops(a, ['math', 'typing'], pick);
-  assert.ok(a.stops.some(s => s.subject === 'typing'));
+  assert.deepEqual(a.stops.map(s => s.subject), ['math', 'typing', 'math', 'typing', 'math']);
   const b = AR.newAdventure('space'); AR.fillStops(b, ['math'], pick);
   assert.ok(b.stops.every(s => s.subject !== 'typing'));
 });
@@ -113,4 +113,61 @@ test('mergeAdventure: a started next world beats a device still on the picker', 
   assert.equal(AR.mergeAdventure(a, b).world, 'ocean');
   assert.equal(AR.mergeAdventure(b, a).picking, false);
   assert.ok(AR.progressKey(b) > AR.progressKey(a));
+});
+
+test('normalizeAdventure repairs bad data', () => {
+  const adv = AR.normalizeAdventure({ world: 'space', region: 9, stop: -2, stops: null, seenIntro: 'x', worldsDone: 3, laps: 'a', next: -4, picking: 1 });
+  assert.equal(adv.region, 5); assert.equal(adv.stop, 0); assert.deepEqual(adv.stops, []);
+  assert.deepEqual(adv.seenIntro, []); assert.deepEqual(adv.worldsDone, []);
+  assert.equal(adv.laps, 0); assert.equal(adv.next, 0); assert.equal(adv.picking, true);
+});
+
+test('normalizeAdventure: an unknown world restarts in space but keeps history', () => {
+  const adv = AR.normalizeAdventure({ world: 'moon', region: 3, stop: 2, stops: [{}], seenIntro: ['a'], worldsDone: ['ocean'], laps: 2, next: 4, picking: false });
+  assert.equal(adv.world, 'space'); assert.equal(adv.region, 0); assert.equal(adv.stop, 0); assert.deepEqual(adv.stops, []);
+  assert.deepEqual(adv.worldsDone, ['ocean']); assert.equal(adv.laps, 2); assert.deepEqual(adv.seenIntro, ['a']); assert.equal(adv.next, 4);
+});
+
+test('normalizeAdventure leaves a valid adventure alone', () => {
+  const adv = AR.newAdventure('ocean'); AR.fillStops(adv, ['math', 'reading'], pick); AR.finishStop(adv, 0, 2);
+  const copy = JSON.parse(JSON.stringify(adv));
+  assert.deepEqual(AR.normalizeAdventure(adv), copy);
+});
+
+test('finishBoss does nothing unless the boss is ready', () => {
+  const adv = AR.newAdventure('space'); adv.stop = 3;
+  assert.equal(AR.finishBoss(adv), null);
+  assert.equal(adv.region, 0); assert.equal(adv.laps, 0); assert.equal(adv.stop, 3);
+  const p = AR.newAdventure('space'); p.stop = 5; p.picking = true;
+  assert.equal(AR.finishBoss(p), null); assert.equal(p.laps, 0);
+});
+
+test('mergeAdventure: a different region or lap takes no stars from the behind side', () => {
+  const mk = (region, laps) => { const x = AR.newAdventure('space'); x.region = region; x.laps = laps; x.stop = 1; x.stops = [{ subject: 'math', missionId: 'math-1', stars: 0 }]; return x; };
+  const a = mk(2, 0), b = mk(1, 0); b.stops[0].stars = 3;
+  assert.equal(AR.mergeAdventure(a, b).stops[0].stars, 0);
+  const c = mk(1, 1), d = mk(1, 0); d.stops[0].stars = 3;
+  assert.equal(AR.mergeAdventure(c, d).stops[0].stars, 0);
+});
+
+test('mergeAdventure: worldsDone union and laps max', () => {
+  const a = AR.newAdventure('ocean'); a.worldsDone = ['space']; a.laps = 1;
+  const b = AR.newAdventure('space'); b.worldsDone = ['pets']; b.laps = 0; b.region = 3;
+  const m = AR.mergeAdventure(a, b);
+  assert.deepEqual(m.worldsDone.sort(), ['pets', 'space']); assert.equal(m.laps, 1);
+});
+
+test('mergeAdventure: both picking stays picking and unions worldsDone', () => {
+  const a = AR.newAdventure('space'); a.picking = true; a.laps = 1; a.worldsDone = ['space'];
+  const b = AR.newAdventure('space'); b.picking = true; b.laps = 1; b.worldsDone = ['space', 'ocean'];
+  const m = AR.mergeAdventure(a, b);
+  assert.equal(m.picking, true); assert.deepEqual(m.worldsDone.sort(), ['ocean', 'space']);
+});
+
+test('mergeAdventure: equal progress, newer updated wins in both orders', () => {
+  const a = AR.newAdventure('space'); a.updated = 100; a.stops = [{ subject: 'math', missionId: 'math-1', stars: 0 }];
+  const b = AR.newAdventure('space'); b.updated = 200; b.stops = [{ subject: 'reading', missionId: 'reading-1', stars: 0 }];
+  for (const m of [AR.mergeAdventure(a, b), AR.mergeAdventure(b, a)]) {
+    assert.equal(m.world, 'space'); assert.equal(m.stops[0].subject, 'reading');
+  }
 });
