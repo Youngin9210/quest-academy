@@ -1392,6 +1392,7 @@ function showDen() {
   document.getElementById('back').onclick = showHome;
   const el = document.getElementById('petView');
   let view = null, loaded = false;
+  const drawnSpecies = pet.species;
   showCreature(el, p, { interactive: true, onPet: () => sfx.good() }).then(v => {
     view = v; loaded = true;
     if (v && mo) v.celebrate(mo.grew ? 'grow' : 'item');
@@ -1402,6 +1403,7 @@ function showDen() {
   const change = (fn, row) => {
     if (!hasPet(p)) return showHatch();   // reset on another device
     const cur = p.pet;
+    if (cur !== pet || cur.species !== drawnSpecies) return showDen();   // a sync swapped the pet: redraw instead of applying the tap
     fn(cur); cur.updated = Date.now(); save();
     row.forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.wear ? cur.wear[PR.ITEM_BY_ID[b.dataset.wear].slot] === b.dataset.wear : (cur.color || 0) === +b.dataset.color)); });
     if (view) view.update(petLook(p));
@@ -2731,12 +2733,17 @@ async function doSync() {
       snapshot[r.id] = pjson(local); lastPoints[r.id] = local.points || 0;
     }
     const dirty = state.profiles.filter(p => p.dirty || !p.updated);
+    const sent = {};   // player id -> serialized data as pushed (same form as snapshot)
     const push = [
-      ...dirty.map(p => { if (!p.updated) p.updated = Date.now(); const d = { ...p }; delete d.dirty; return { id: p.id, updated: p.updated, data: d }; }),
+      ...dirty.map(p => { if (!p.updated) p.updated = Date.now(); const d = { ...p }; delete d.dirty; sent[p.id] = pjson(d); return { id: p.id, updated: p.updated, data: d }; }),
       ...state.sync.tombs.map(t => ({ id: t.id, updated: t.updated, deleted: true })),
     ];
     for (let i = 0; i < push.length; i += 20) await syncCall({ action: 'push', players: push.slice(i, i + 20) });
-    dirty.forEach(p => { delete p.dirty; snapshot[p.id] = pjson(p); });
+    // an edit saved while the push was in flight stays dirty so the next sync uploads it
+    dirty.forEach(p => {
+      snapshot[p.id] = sent[p.id];
+      if (pjson({ ...p, dirty: undefined }) === sent[p.id]) delete p.dirty;
+    });
     state.sync.tombs = [];
     state.sync.last = pulled.now - 5000;        // small overlap so nothing slips between devices
     state.sync.ok = Date.now(); lastSyncError = '';

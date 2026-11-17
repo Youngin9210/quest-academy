@@ -274,12 +274,12 @@ function setup(renderer, el, look, opts, cleanup, undo) {
   const fx = new THREE.Group(); stageRoot.add(fx);         // hearts and sparkles
 
   function build(next) {
-    if (ground && (!current || current.ground !== next.ground)) { stageRoot.remove(ground); disposeTree(ground); ground = null; }
-    if (!ground) { ground = buildGround(next.ground); stageRoot.add(ground); }
-    if (creature) { mover.remove(creature.group); disposeTree(creature.group); }
-    gear.forEach(gm => { mover.remove(gm); disposeTree(gm); }); gear = [];
     gradientTex = gradient;
     try {
+      if (ground && (!current || current.ground !== next.ground)) { stageRoot.remove(ground); disposeTree(ground); ground = null; }
+      if (!ground) { ground = buildGround(next.ground); stageRoot.add(ground); }
+      if (creature) { mover.remove(creature.group); disposeTree(creature.group); }
+      gear.forEach(gm => { mover.remove(gm); disposeTree(gm); }); gear = [];
       creature = buildCreature(next, tex);
       creature.group.scale.setScalar(SIZE[next.stage]);
       mover.add(creature.group);
