@@ -1145,7 +1145,10 @@ function childFormHtml(f, label) {
 function bindChildForm(f, redraw, onAdd) {
   const nm = document.getElementById('kn');
   nm.oninput = () => { f.name = nm.value; };
-  bindAll('[data-grade]', el => { f.grade = +el.dataset.grade; redraw(); });
+  bindAll('[data-grade]', el => {   // in place: no redraw, so the page doesn't jump to the top
+    f.grade = +el.dataset.grade;
+    $app.querySelectorAll('[data-grade]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.grade === f.grade)));
+  });
   document.getElementById('kf').onsubmit = e => {
     e.preventDefault();
     const name = f.name.trim();
