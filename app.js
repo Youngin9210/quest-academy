@@ -580,6 +580,30 @@ const SUBJECTS = window.SUBJECTS || {};
 SUBJECTS.math = { name: 'Math', icon: '🔢', builtIn: true };
 SUBJECTS.typing = { name: 'Typing', icon: '⌨️', builtIn: true };
 const SUBJECT_ORDER = ['math', 'reading', 'writing', 'science', 'social', 'typing'].filter(id => SUBJECTS[id]);
+// subject-rules.js failed to load (mixed-version boot): every subject on
+const SR = window.SubjectRules || { subjectOn: () => true, questRotation: r => r };
+
+// Typing needs a real keyboard: a computer (or iPad with a trackpad), or a device where a key was
+// pressed outside a text field (the iPad on-screen keyboard only opens for a text field). Device-local.
+const KEYBOARD_KEY = 'qa.keyboard';
+let keyboardSeen = false;
+try { keyboardSeen = localStorage.getItem(KEYBOARD_KEY) === '1'; } catch (e) { /* storage blocked */ }
+const finePointer = () => !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
+const hasKeyboard = () => keyboardSeen || finePointer();
+document.addEventListener('keydown', e => {
+  if (keyboardSeen) return;
+  const t = e.target;
+  if (t && t.closest && (t.closest('input, textarea, select, [contenteditable]') || t.isContentEditable)) return;
+  const before = hasKeyboard();
+  keyboardSeen = true;
+  try { localStorage.setItem(KEYBOARD_KEY, '1'); } catch (e2) { /* storage blocked */ }
+  if (!before && screen === 'home' && !game && me()) showHome();   // the Typing tab appears
+});
+
+// The subjects she sees: the grown-up's switches (or the defaults), and Typing only with a keyboard. Math is always on.
+const subjectOnFor = (p, sid) => SR.subjectOn(p, sid, levelOf(p, sid));
+const subjectsFor = p => SUBJECT_ORDER.filter(sid => sid === 'math' || (subjectOnFor(p, sid) && (sid !== 'typing' || hasKeyboard())));
+const typingAvailable = p => !!SUBJECTS.typing && subjectsFor(p).includes('typing');
 const BANK = {};   // mission id -> { subject, mission }
 const QINDEX = {}; // question id -> { mid, q }
 SUBJECT_ORDER.filter(sid => !SUBJECTS[sid].builtIn).forEach(sid => (SUBJECTS[sid].missions || []).forEach(m => {
@@ -1075,7 +1099,7 @@ function showKidLook(p) {
 }
 function showKidTour(p, i) {
   applyTheme(p.theme);
-  const tabs = `<div class="subject-tabs">${SUBJECT_ORDER.slice(0, 3).map((s, k) => `<span class="subject-tab" aria-selected="${k === 0}"><span class="ti">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></span>`).join('')}</div>`;
+  const tabs = `<div class="subject-tabs">${subjectsFor(p).slice(0, 3).map((s, k) => `<span class="subject-tab" aria-selected="${k === 0}"><span class="ti">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></span>`).join('')}</div>`;
   const cards = [
     { pic: tabs, text: 'Pick a subject, then a mission.' },
     { pic: questCardHtml(p), text: "Today's Quest is a mix from every subject. A new one every day!" },
@@ -1331,7 +1355,7 @@ function showSetupDone() {
 function howItWorksHtml() {
   return `<details class="card how" ${state.setupSeen ? '' : 'open'}><summary><b>📖 How it works</b></summary>
     <ul>
-      <li><b>One player per child.</b> Each picks a world (just the look) and her grade. Change a grade or set a different level per subject from a player's settings (⚙️) while this page is unlocked.</li>
+      <li><b>One player per child.</b> Each picks a world (just the look) and her grade. Change a grade, set a different level per subject or turn off a subject she isn't studying yet from a player's settings (⚙️) while this page is unlocked.</li>
       <li><b>Start each day with Today's Quest.</b> 10 questions from every subject, mixing in things she missed. It keeps a daily streak.</li>
       <li><b>Or pick a subject and a mission</b> that matches this week's homework. "Try me!" marks the one she's practiced least.</li>
       <li><b>Missed questions come back</b> a few questions later and keep showing up until they stick. Hints help first; the answer shows after a second miss.</li>
@@ -1347,7 +1371,9 @@ function howItWorksHtml() {
 /* ----- Create / edit player ----- */
 function showEditProfile(existing, after) {
   const d = existing || { name: '', avatar: null, grade: 2, theme: 'space' };
-  let sel = { name: d.name, avatar: d.avatar, grade: d.grade, theme: d.theme, levels: { ...(d.levels || {}) } };
+  let sel = { name: d.name, avatar: d.avatar, grade: d.grade, theme: d.theme, levels: { ...(d.levels || {}) }, subjects: { ...(d.subjects || {}) } };
+  // on/off as it would be saved: explicit switches, else the default for the grade being picked
+  const selOn = sid => SR.subjectOn(sel, sid, sel.levels[sid] || sel.grade);
   applyTheme(sel.theme);
 
   const draw = () => {
@@ -1384,6 +1410,14 @@ function showEditProfile(existing, after) {
             ${GRADES.map(g => `<button class="pick" data-grade="${g}" aria-pressed="${g === sel.grade}">${gradeName(g)} grade</button>`).join('')}
           </div>
         </div>`}
+        ${grownupUnlocked() ? `<div>
+          <span class="lbl" id="lblSubjects">Subjects</span>
+          <p class="muted" style="margin:0 0 8px">Turn off a subject your child isn't studying yet. Progress is kept.</p>
+          <div class="pick-row subject-switches" role="group" aria-labelledby="lblSubjects">
+            ${SUBJECT_ORDER.filter(sid => sid !== 'math').map(sid => `<button class="pick subject-switch" type="button" data-subj="${sid}" aria-pressed="${selOn(sid)}"><span aria-hidden="true">${SUBJECTS[sid].icon}</span> ${SUBJECTS[sid].name} <span class="sw-state">${selOn(sid) ? 'On' : 'Off'}</span></button>`).join('')}
+          </div>
+          ${SUBJECTS.typing ? '<p class="muted" style="margin:6px 0 0;font-size:.95rem">Typing shows only on a computer, or an iPad with a keyboard connected.</p>' : ''}
+        </div>` : ''}
         ${grownupUnlocked() ? `<details class="levels" ${Object.keys(sel.levels).length ? 'open' : ''}>
           <summary>Different level for some subjects?</summary>
           <div class="level-grid">${SUBJECT_ORDER.map(sid => `<label>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}
@@ -1404,9 +1438,10 @@ function showEditProfile(existing, after) {
     bindAll('[data-theme]', el => { sel.theme = el.dataset.theme; applyTheme(sel.theme); draw(); });
     bindAll('[data-av]', el => { sel.avatar = el.dataset.av; draw(); });
     bindAll('[data-grade]', el => { sel.grade = +el.dataset.grade; draw(); });
+    bindAll('[data-subj]', el => { sel.subjects[el.dataset.subj] = !selOn(el.dataset.subj); draw(); });
     const ug = document.getElementById('unlockGrade');
     if (ug) ug.onclick = () => { sel.name = nm.value; showParentGate(() => { applyTheme(sel.theme); draw(); }, () => { applyTheme(sel.theme); draw(); }); };
-    $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; }; });
+    $app.querySelectorAll('[data-level]').forEach(el => { el.onchange = () => { if (el.value) sel.levels[el.dataset.level] = +el.value; else delete sel.levels[el.dataset.level]; if (el.dataset.level === 'social') draw(); }; });
     document.getElementById('back').onclick = () => after ? after() : existing ? showHome() : showProfiles();
     if (existing) document.getElementById('switch').onclick = showProfiles;
     const dp = document.getElementById('delP');
@@ -1426,8 +1461,10 @@ function showEditProfile(existing, after) {
       const name = sel.name.trim();
       if (!name) { toast('Type your name first!'); nm.focus(); return; }
       const levels = Object.fromEntries(Object.entries(sel.levels).filter(([, g]) => g !== sel.grade));
-      if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels });
-      else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; state.profiles.push(p); state.current = p.id; }
+      // only switches a grown-up changed are stored; the rest keep following the default for her grade
+      const subjects = Object.fromEntries(Object.entries(sel.subjects).filter(([sid, on]) => sid !== 'math' && typeof on === 'boolean'));
+      if (existing) Object.assign(existing, { name, avatar: sel.avatar, grade: sel.grade, theme: sel.theme, levels, subjects });
+      else { const p = newProfile(name, sel.avatar, sel.grade, sel.theme); p.levels = levels; p.subjects = subjects; state.profiles.push(p); state.current = p.id; }
       save(); after ? after() : showHome();
     };
   };
@@ -1439,7 +1476,8 @@ function showHome() {
   const p = me(); if (!p) return showProfiles();
   const th = theme(p);
   applyTheme(p.theme);
-  const subj = SUBJECTS[p.subject] ? p.subject : 'math';
+  const visible = subjectsFor(p);
+  const subj = visible.includes(p.subject) ? p.subject : visible[0];   // a hidden subject falls back (not saved)
   const lvl = levelOf(p, subj);
   const missions = subj === 'math'
     ? (lvl >= 4 ? MISSIONS45 : MISSIONS).filter(m => m.grade <= lvl).map(m => ({ id: m.id, icon: th.missions[m.id].icon, name: th.missions[m.id].name, desc: m.desc, grade: Math.min(m.grade, lvl) }))
@@ -1468,7 +1506,7 @@ function showHome() {
       ${petCardHtml(p)}
       ${questCardHtml(p)}
       <div class="subject-tabs" role="tablist" aria-label="Subjects">
-        ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}"><span class="ti" aria-hidden="true">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></button>`).join('')}
+        ${visible.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}"><span class="ti" aria-hidden="true">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></button>`).join('')}
       </div>
       <div class="mission-grid">
         ${missions.map(m => {
@@ -2121,7 +2159,9 @@ function reviewAtLevel(k, v) {
   return true;
 }
 function buildQuest(p) {
-  const subjects = ['math', 'reading', 'writing', 'science', 'social'].filter(s => SUBJECTS[s]);
+  // only subjects she sees (typing is never in the quest); off subjects lend no questions, not even review
+  const subjects = subjectsFor(p).filter(s => s !== 'typing');
+  const rotation = SR.questRotation(QUEST_SUBJECTS, subjects);
   const owner = {};   // mission id -> subject, only missions at her level
   subjects.forEach(s => questMissions(p, s).forEach(id => { owner[id] = s; }));
   // up to 4 things she missed and hasn't mastered yet, no more than 2 from one mission
@@ -2133,9 +2173,10 @@ function buildQuest(p) {
     .map(([k]) => reviewSlot(k, owner[missionOf(k)])).filter(Boolean).slice(0, 4);
   // the rest: her least-practiced missions, rotating through subjects
   const fresh = [], usedM = {};
-  for (let i = 0; fresh.length < QUEST_LEN - review.length && i < 40; i++) {
-    const subj = QUEST_SUBJECTS[i % QUEST_SUBJECTS.length];
-    const ids = questMissions(p, subj).filter(id => (usedM[id] || 0) < 2);
+  // a second pass lets a mission repeat more than twice, so a quest with few subjects still has 10 questions
+  for (let i = 0; fresh.length < QUEST_LEN - review.length && i < 80; i++) {
+    const subj = rotation[i % rotation.length], cap = i < 40 ? 2 : Infinity;
+    const ids = questMissions(p, subj).filter(id => (usedM[id] || 0) < cap);
     if (!ids.length) continue;
     const v = atLevel(p, subj);
     const low = ids.map(id => [id, progress(v, id) + Math.random() * .15]).sort((a, b) => a[1] - b[1]);
@@ -2197,7 +2238,7 @@ function finishQuest() {
   // typing needs a real keyboard, so it's an extra, not part of the quest
   const lessons = TYPING_LESSONS.filter(l => !l.game);
   const typeNext = lessons.slice().sort((a, b) => typingProgress(p, a.id) - typingProgress(p, b.id))[0];
-  const keyboard = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const keyboard = typingAvailable(p);
   render(`
     <div class="result stack card">
       <h1>${first ? '⭐ Quest complete!' : 'Extra practice done!'}</h1>
@@ -2209,7 +2250,7 @@ function finishQuest() {
         ${perfect ? '<br>🎯 <b>Perfect!</b> +5 bonus' : ''}${first ? `<br>⭐ Quest bonus +${QUEST_BONUS}` : ''}<br>+${earned} ${th.point} ${th.pointIcon}</p>
       ${first ? '<p class="muted" style="margin:0">A new quest is ready tomorrow.</p>' : ''}
       <div class="row-actions">
-        ${keyboard && typeNext && SUBJECTS.typing ? `<button class="btn" id="typeBonus">⌨️ Typing warm-up: ${esc(typeNext.name)}</button>` : ''}
+        ${keyboard && typeNext ? `<button class="btn" id="typeBonus">⌨️ Typing warm-up: ${esc(typeNext.name)}</button>` : ''}
         <button class="btn ${keyboard ? 'ghost' : ''}" id="home">Home</button>
       </div>
     </div>
@@ -2309,6 +2350,7 @@ const noKeyboardNote = () => matchMedia('(pointer: coarse)').matches
   ? `<p class="muted center" style="margin:6px 0 0">⌨️ Typing works best with a real keyboard. On a tablet, tap the words to open the keyboard.</p>` : '';
 
 function startTyping(id) {
+  if (!typingAvailable(me())) return showHome();   // no keyboard here, or typing is switched off
   const lesson = TYPE_BY_ID[id];
   if (lesson.game) return startBlaster();
   const p = me(), th = theme(p);
@@ -2752,6 +2794,8 @@ function dayName(d, short = false) {
 const levelsText = p => `${gradeName(p.grade)} grade${Object.keys(p.levels || {}).length ? ' · ' + Object.entries(p.levels).map(([s, g]) => `${SUBJECTS[s] ? SUBJECTS[s].name : s} ${gradeName(g)}`).join(', ') : ''}`;
 const streakOf = p => p.lastDay && dayDiff(p.lastDay, today()) <= 1 ? p.streak : 0;
 
+// a subject a grown-up turned off (or off by default): progress still shows, marked Off
+const offTag = (p, sid) => subjectOnFor(p, sid) ? '' : ' <span class="muted off-tag">Off</span>';
 function showParents() {
   applyTheme('space');
   const signedIn = SYNC_URL && state.sync.token;
@@ -2770,7 +2814,7 @@ function showParents() {
         <div><h3>This week</h3>${dayDots(p, 7)}
           <p class="muted gu-note">${played.length || mins ? `${plural(played.length, 'activity')}${mins ? ` · about ${mins} min` : ''} · ${plural(questsThisWeek(p), 'daily quest')}` : `${plural(questsThisWeek(p), 'daily quest')} · missions and minutes show from ${esc(state.logStart)}`}</p></div>
         <div><h3>Stuck on</h3>${stuck.length ? `<div class="facts">${stuck.map(stuckChip).join('')}</div>` : '<p class="muted gu-note">Nothing tricky right now. Nice!</p>'}</div>
-        <div><h3>Subjects</h3><div class="gu-bars">${SUBJECT_ORDER.map(sid => `<span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}</span>${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}`).join('')}</div></div>
+        <div><h3>Subjects</h3><div class="gu-bars">${SUBJECT_ORDER.map(sid => `<span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name}${offTag(p, sid)}</span>${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}`).join('')}</div></div>
         <div><h3>Latest</h3>${latest.length ? `<ul class="gu-feed">${latest.map(e => `<li>${activityText(e, p)} <span class="muted">· ${esc(dayName(dayKey(e.t), true))}</span></li>`).join('')}</ul>` : '<p class="muted gu-note">Nothing yet. Activities show here as she plays.</p>'}</div>
         <div class="row-actions" style="justify-content:flex-start"><button class="btn" data-detail="${p.id}">See details →</button></div>
       </section>`;
@@ -2814,7 +2858,7 @@ function showParentDetail(id, journalShown = 5) {
       <p class="muted gu-note">🔥 ${streakOf(p)}-day streak · ⭐ ${plural(questsThisWeek(p), 'daily quest')} this week · last played ${p.lastDay ? esc(dayName(p.lastDay, true)) : 'never'}${recent.length ? ` · ${plural(recent.filter(e => e.k !== 'journal').length, 'activity')}, about ${minutesOf(recent)} min in 2 weeks` : ''}</p></section>
 
     <section class="card stack"><h2>Subjects</h2>
-      ${SUBJECT_ORDER.map(sid => `<details class="gu-subject"><summary><span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name} <span class="muted">${gradeName(levelOf(p, sid))}</span></span><span class="gu-sumbar">${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}</span></summary>
+      ${SUBJECT_ORDER.map(sid => `<details class="gu-subject"><summary><span>${SUBJECTS[sid].icon} ${SUBJECTS[sid].name} <span class="muted">${gradeName(levelOf(p, sid))}</span>${offTag(p, sid)}</span><span class="gu-sumbar">${masteryBar(Math.round(subjectMastery(p, sid) * 100), SUBJECTS[sid].name)}</span></summary>
         <div style="overflow-x:auto"><table><tr><th>Mission</th><th>Played</th><th>${sid === 'typing' ? 'Recent' : 'First try'}</th><th>Mastered</th></tr>
         ${parentMissions(p, sid).map(m => {
           if (sid === 'typing') {

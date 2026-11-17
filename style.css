@@ -629,3 +629,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
   .tour-pic .subject-tabs { gap: 8px; }
   .tour-pic .subject-tab { padding: 10px 10px; }
 }
+
+/* Grown-ups: per-child subject switches */
+.subject-switch .sw-state { font-size: .85rem; font-weight: 700; opacity: .75; }
+.subject-switch[aria-pressed="false"] { opacity: .7; }
+.off-tag { font-size: .85rem; font-weight: 600; }
