@@ -1742,7 +1742,7 @@ function showJournal(promptIdx) {
     <div class="card stack">
       <div class="story">${sayBtn('.story-text')}<p class="story-text" style="font-size:1.4rem;font-weight:600;margin:0">${esc(prompt)}</p></div>
       <button class="btn ghost small" id="another" style="align-self:flex-start">🎲 Give me a different idea</button>
-      <textarea class="text journal-text" id="jt" rows="8" placeholder="Start writing here..." autocorrect="off" spellcheck="false"></textarea>
+      <textarea class="text journal-text" id="jt" rows="8" maxlength="5000" placeholder="Start writing here..." autocorrect="off" spellcheck="false"></textarea>
       <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="saveJ">Save my writing ${th.pointIcon}</button></div>
     </div>
     ${p.journal.length ? `<h2 style="margin-top:26px">My writing</h2>
