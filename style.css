@@ -523,3 +523,33 @@ section.card { margin-top: 16px; }
   .gu-sumbar { grid-template-columns: 70px 3.2em; }
   .gu-subject table { font-size: .95rem; }
 }
+
+/* ----- Creature companion ----- */
+.pet-card { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; }
+.pet-card .pet-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pet-card b { font-size: 1.3rem; }
+.pet-egg-card .pet-egg-icon { font-size: 3rem; }
+.pet-egg-card span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.pet-view { display: grid; place-items: center; border-radius: 18px; background: color-mix(in srgb, var(--accent2) 14%, transparent); overflow: hidden; flex: none; }
+.pet-view.small { width: 120px; height: 120px; }
+.pet-view.large { width: 100%; height: min(60vh, 420px); }
+.pet-emoji { font-size: 4rem; line-height: 1; }
+.pet-view.large .pet-emoji { font-size: 8rem; }
+.pet-emoji.pet-stage-0 { filter: grayscale(.4); }
+.pet-new { font-weight: 600; color: var(--accent-text); }
+.pet-new.big { font-size: 1.3rem; text-align: center; margin: 0; }
+.den-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.den-head h1 { margin: 0; }
+.den-hint { margin: -4px 0 0; }
+.egg-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.pick.egg { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; }
+.egg-emoji { font-size: 2.2rem; }
+.wardrobe { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick.ward { display: inline-flex; align-items: center; gap: 6px; }
+.pick.ward.locked { opacity: .6; font-size: .95rem; cursor: default; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; background: linear-gradient(135deg, var(--a) 60%, var(--b) 60%); cursor: pointer; padding: 0; }
+.swatch[aria-pressed="true"] { border-color: var(--accent-text); }
+.swatch.locked { background: repeating-linear-gradient(45deg, #ccc 0 6px, #e6e6e6 6px 12px); cursor: default; }
+.result .pet-view.small { margin: 0 auto; width: 160px; height: 160px; }
+@media (max-width: 560px) { .pet-view.small { width: 96px; height: 96px; } }

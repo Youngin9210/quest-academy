@@ -1212,6 +1212,7 @@ function showHome() {
         <h1>${th.title}</h1>
         <p class="muted home-sub">${questDoneToday(p) ? `Nice work today, ${esc(p.name)}! Pick any mission to keep going.` : `Hi ${esc(p.name)}! Start with today's quest, or pick any mission.`}</p>
       </div>
+      ${petCardHtml(p)}
       ${questCardHtml(p)}
       <div class="subject-tabs" role="tablist" aria-label="Subjects">
         ${SUBJECT_ORDER.map(s => `<button class="subject-tab" role="tab" data-s="${s}" aria-selected="${s === subj}"><span class="ti" aria-hidden="true">${SUBJECTS[s].icon}</span><span>${SUBJECTS[s].name}</span></button>`).join('')}
@@ -1262,6 +1263,114 @@ function showHome() {
   document.getElementById('switchP').onclick = showProfiles;
   document.getElementById('grown').onclick = () => showParentGate(showParents, showHome);
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showHome(); };
+  bindPetCard(p);
+}
+
+/* ----- Creature: home card, hatching, den ----- */
+function petMomentText(p, mo) {
+  const nm = esc(p.pet.name), parts = [];
+  if (mo.grew) parts.push(mo.stage === 1 ? `${nm} hatched!` : `${nm} grew into a ${PR.STAGES[mo.stage].name}!`);
+  if (mo.items.length) parts.push(`New for ${nm}: ${mo.items.map(id => `${PR.ITEM_BY_ID[id].icon} ${esc(PR.ITEM_BY_ID[id].name)}`).join(', ')}`);
+  return parts.join(' ');
+}
+function petProgressText(p) {
+  const pr = PR.progress(petMastered(p));
+  if (pr.toNext === null) return 'Fully grown!';
+  const verb = pr.stage === 0 ? 'to hatch' : 'to grow';
+  return `${plural(pr.toNext, 'more mastered question')} ${verb}`;
+}
+function petCardHtml(p) {
+  if (!p.pet || !p.pet.species) return `<button class="card pet-card pet-egg-card" id="petCard">
+      <span class="pet-egg-icon" aria-hidden="true">🥚</span>
+      <span><b>An egg is waiting for you!</b><span class="muted">Pick a creature and give it a name.</span></span></button>`;
+  const sp = PR.SPECIES[p.pet.species], mo = PR.pendingMoment(p.pet, petStage(p));
+  return `<button class="card pet-card" id="petCard" aria-label="Visit ${esc(p.pet.name)}">
+      <span class="pet-view small" id="petView"></span>
+      <span class="pet-info"><b>${esc(p.pet.name)}</b><span class="muted">${PR.STAGES[petStage(p)].name} ${sp.name}</span>
+        ${mo ? `<span class="pet-new">${petMomentText(p, mo)}</span>` : `<span class="muted">${petProgressText(p)}</span>`}</span></button>`;
+}
+function bindPetCard(p) {
+  const card = document.getElementById('petCard');
+  if (!card) return;
+  card.onclick = () => p.pet && p.pet.species ? showDen() : showHatch();
+  const view = document.getElementById('petView');
+  if (!view) return;
+  const mo = PR.pendingMoment(p.pet, petStage(p));
+  showCreature(view, p, { interactive: false }).then(v => {
+    if (mo) { if (v) v.celebrate(mo.grew ? 'grow' : 'item'); markPetSeen(p); save(); }
+  });
+}
+
+function showHatch() {
+  const p = me(); if (!p) return showProfiles();
+  applyTheme(p.theme);
+  let pick = null, name = '';
+  const draw = () => {
+    render(`
+      <div class="topbar"><button class="btn ghost small" id="back">← Back</button></div>
+      <div class="card stack">
+        <h1>Pick your egg</h1>
+        <p class="muted">Each egg holds a different creature. It grows as you master questions.</p>
+        <div class="egg-pick">${PR.SPECIES_ORDER.map(id => `<button class="pick egg" data-sp="${id}" aria-pressed="${id === pick}">
+          <span class="egg-emoji" aria-hidden="true">🥚${PR.SPECIES[id].emoji}</span>${PR.SPECIES[id].name}</button>`).join('')}</div>
+        ${pick ? `<div>
+          <label class="lbl" for="petName">Name your ${PR.SPECIES[pick].name.toLowerCase()}</label>
+          <input class="text" id="petName" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" value="${esc(name || PR.SPECIES[pick].defaultName)}">
+        </div>
+        <div class="row-actions" style="justify-content:flex-start"><button class="btn" id="hatch">Keep my egg 🥚</button></div>` : ''}
+      </div>`);
+    document.getElementById('back').onclick = showHome;
+    bindAll('[data-sp]', el => { const nmEl = document.getElementById('petName'); if (nmEl) name = nmEl.value; pick = el.dataset.sp; draw(); });
+    const h = document.getElementById('hatch');
+    if (h) h.onclick = () => {
+      const nm = PR.cleanName(document.getElementById('petName').value);
+      if (!nm) { toast('Give your creature a name!'); return; }
+      const kept = p.pet ? p.pet.items : [];
+      const old = p.pet;
+      p.pet = PR.newPet(pick, nm, kept);
+      if (old) { p.pet.seenStage = old.seenStage || 0; p.pet.color = 0; }
+      updatePet(p); p.pet.seenItems = [...p.pet.items];   // gear she already earned isn't "new"
+      save(); showDen();
+    };
+  };
+  draw();
+}
+
+function showDen() {
+  const p = me(); if (!p) return showProfiles();
+  if (!p.pet || !p.pet.species) return showHatch();
+  applyTheme(p.theme);
+  const pet = p.pet, stage = petStage(p), sp = PR.SPECIES[pet.species];
+  const mo = PR.pendingMoment(pet, stage), colors = PR.colorsUnlocked(stage);
+  const slotName = { head: 'Head', neck: 'Neck', back: 'Back' };
+  render(`
+    <div class="topbar"><button class="btn ghost small" id="back">← Home</button></div>
+    <div class="card stack den">
+      <div class="den-head"><h1>${esc(pet.name)}</h1><span class="muted">${PR.STAGES[stage].name} ${sp.name} · ${petProgressText(p)}</span></div>
+      ${mo ? `<p class="pet-new big">${petMomentText(p, mo)}</p>` : ''}
+      <div class="pet-view large" id="petView" role="img" aria-label="${esc(pet.name)} the ${sp.name}"></div>
+      <p class="muted center den-hint">Drag to turn ${esc(pet.name)}. Tap to pet.</p>
+      ${['head', 'neck', 'back'].map(slot => {
+        const items = PR.ITEMS.filter(it => it.slot === slot);
+        return `<div><span class="lbl">${slotName[slot]}</span><div class="wardrobe">${items.map(it => pet.items.includes(it.id)
+          ? `<button class="pick ward" data-wear="${it.id}" aria-pressed="${pet.wear[slot] === it.id}"><span aria-hidden="true">${it.icon}</span>${esc(it.name)}</button>`
+          : `<span class="pick ward locked"><span aria-hidden="true">🔒</span>${esc(it.how)}</span>`).join('')}</div></div>`;
+      }).join('')}
+      <div><span class="lbl">Colors</span><div class="swatches">${sp.patterns.map((c, i) => i < colors
+        ? `<button class="swatch" data-color="${i}" aria-pressed="${(pet.color || 0) === i}" aria-label="Color ${i + 1}" style="--a:#${c[0].toString(16).padStart(6, '0')};--b:#${c[2].toString(16).padStart(6, '0')}"></button>`
+        : `<span class="swatch locked" aria-label="Locked color"></span>`).join('')}</div>
+        ${colors < 10 ? `<p class="muted" style="margin:6px 0 0">${esc(pet.name)} gets 2 new colors at each new stage.</p>` : ''}</div>
+    </div>`);
+  document.getElementById('back').onclick = showHome;
+  const el = document.getElementById('petView');
+  let view = null;
+  showCreature(el, p, { interactive: true, onPet: () => sfx.good() }).then(v => {
+    view = v;
+    if (mo) { if (v) v.celebrate(mo.grew ? 'grow' : 'item'); markPetSeen(p); save(); }
+  });
+  const change = fn => { fn(); pet.updated = Date.now(); save(); showDen(); };
+  bindAll('[data-wear]', b => change(() => { const it = PR.ITEM_BY_ID[b.dataset.wear]; pet.wear[it.slot] = pet.wear[it.slot] === it.id ? null : it.id; }));
+  bindAll('[data-color]', b => change(() => { pet.color = +b.dataset.color; }));
 }
 
 /* ----- Journal ----- */
