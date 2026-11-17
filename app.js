@@ -1302,6 +1302,19 @@ function bindPetCard(p) {
   });
 }
 
+function petMomentHtml(p) {
+  const mo = p.pet && PR.pendingMoment(p.pet, petStage(p));
+  if (!mo) return '';
+  return `<div class="pet-moment stack"><div class="pet-view small" id="petMoment"></div><h2 style="margin:0">${petMomentText(p, mo)}</h2></div>`;
+}
+function bindPetMoment(p) {
+  const el = document.getElementById('petMoment');
+  if (!el) return;
+  const mo = PR.pendingMoment(p.pet, petStage(p));
+  markPetSeen(p); save();   // seen once, even if she leaves before the 3D view loads
+  showCreature(el, p, { interactive: false }).then(v => { if (v && mo) v.celebrate(mo.grew ? 'grow' : 'item'); });
+}
+
 function showHatch() {
   const p = me(); if (!p) return showProfiles();
   applyTheme(p.theme);
@@ -1758,6 +1771,7 @@ function finishMission() {
   render(`
     <div class="result stack card">
       <h1>${th.finish}</h1>
+      ${petMomentHtml(p)}
       ${prize ? `<div class="prize">${prize[0]}</div>
         <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>`
         : `<div class="prize">🏆</div><h2>You found everything in ${th.collection}!</h2>`}
@@ -1773,6 +1787,7 @@ function finishMission() {
   document.getElementById('again').onclick = () => startMission(missionId);
   document.getElementById('coll').onclick = showCollection;
   document.getElementById('home').onclick = showHome;
+  bindPetMoment(p);
 }
 
 /* =========================================================
@@ -1909,6 +1924,7 @@ function finishQuest() {
   render(`
     <div class="result stack card">
       <h1>${first ? '⭐ Quest complete!' : 'Extra practice done!'}</h1>
+      ${petMomentHtml(p)}
       ${prize ? `<div class="prize">${prize[0]}</div>
         <h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>` : ''}
       ${first && streak > 1 ? `<p class="quest-streak-big">⭐ ${streak} quests in a row!</p>` : ''}
@@ -1923,6 +1939,7 @@ function finishQuest() {
   `);
   const tb = document.getElementById('typeBonus'); if (tb) tb.onclick = () => startTyping(typeNext.id);
   document.getElementById('home').onclick = showHome;
+  bindPetMoment(p);
 }
 
 /* =========================================================
@@ -2102,6 +2119,7 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
   render(`
     <div class="result stack card">
       <h1>${title}</h1>
+      ${petMomentHtml(p)}
       ${prize ? `<div class="prize">${prize[0]}</div><h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>` : ''}
       ${bodyHtml}
       <p class="score">+${earned} ${th.point} ${th.pointIcon}</p>
@@ -2110,6 +2128,7 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
   document.getElementById('again').onclick = again;
   const coll = document.getElementById('coll'); if (coll) coll.onclick = showCollection;
   document.getElementById('home').onclick = showHome;
+  bindPetMoment(p);
 }
 
 /* ----- Word Blaster game ----- */
