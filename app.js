@@ -1388,11 +1388,17 @@ function showDen() {
         <span class="pet-goal-icon" aria-hidden="true">${g.icon}</span>
         <div class="pet-goal-main"><b>${g.text}</b>
           ${g.count ? `${petBar(g.pct)}<span class="muted">${g.count} · Get a question right on the first try, two times in a row, to master it.</span>` : ''}</div></div>`; })()}
+      <h2 class="den-sub">Gear <span class="muted">${pet.items.length} of ${PR.ITEMS.length} earned</span></h2>
       ${['head', 'neck', 'back'].map(slot => {
-        const items = PR.ITEMS.filter(it => it.slot === slot);
+        const items = PR.ITEMS.filter(it => it.slot === slot), streak = petContext(p).streak;
         return `<div><span class="lbl">${slotName[slot]}</span><div class="wardrobe">${items.map(it => pet.items.includes(it.id)
-          ? `<button class="pick ward" data-wear="${it.id}" aria-pressed="${pet.wear[slot] === it.id}"><span aria-hidden="true">${it.icon}</span>${esc(it.name)}</button>`
-          : `<span class="pick ward locked"><span aria-hidden="true">🔒</span><span class="ward-icon" aria-hidden="true">${it.icon}</span><span><b>${esc(it.name)}</b> · ${esc(it.how)}</span></span>`).join('')}</div></div>`;
+          ? `<button class="ward-tile" data-wear="${it.id}" aria-pressed="${pet.wear[slot] === it.id}">
+              <span class="wt-icon" aria-hidden="true">${it.icon}</span><span class="wt-name">${esc(it.name)}</span>
+              <span class="wt-state wt-off">Tap to wear</span><span class="wt-state wt-on">✓ Wearing</span></button>`
+          : `<div class="ward-tile locked">
+              <span class="wt-icon" aria-hidden="true">${it.icon}</span><span class="wt-lock" aria-hidden="true">🔒</span>
+              <span class="wt-name">${esc(it.name)}</span><span class="wt-how">${esc(it.how)}</span>
+              ${it.streak ? `${petBar(Math.round(Math.min(1, streak / it.streak) * 100))}<span class="wt-count">${Math.min(streak, it.streak)} of ${it.streak} days</span>` : ''}</div>`).join('')}</div></div>`;
       }).join('')}
       <div><span class="lbl">Colors</span><div class="swatches">${sp.patterns.map((c, i) => i < colors
         ? `<button class="swatch" data-color="${i}" aria-pressed="${(pet.color || 0) === i}" aria-label="Color ${i + 1}" style="--a:#${c[0].toString(16).padStart(6, '0')};--b:#${c[2].toString(16).padStart(6, '0')}"></button>`
