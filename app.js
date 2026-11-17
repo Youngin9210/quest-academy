@@ -2379,17 +2379,18 @@ async function showMap(opts = {}) {
       </div>
     </div>
     <div class="adv-head">
-      <button class="adv-title" id="intro"><b>${esc(reg.name)}</b><span class="muted">${esc(world.name)} world · Region ${adv.region + 1} of ${AR.REGIONS}</span></button>
+      <div class="adv-title"><h1 class="adv-region">${esc(reg.name)}</h1><span class="muted">${esc(world.name)} world · Region ${adv.region + 1} of ${AR.REGIONS}</span></div>
+      <button class="btn ghost small" id="intro" aria-label="Show the ${esc(reg.name)} story">📜 Story</button>
       <span class="adv-dots" aria-hidden="true">${Array.from({ length: AR.REGIONS }, (_, k) => `<i class="${k < adv.region ? 'done' : k === adv.region ? 'here' : ''}"></i>`).join('')}</span>
     </div>
     <div id="advMap" class="adv-map-wrap"></div>
     <nav class="adv-bar" aria-label="More to do">
-      <button class="btn ghost small" id="practice">📚 Free practice</button>
-      <button class="btn ghost small" id="petBtn">${hasPet(p) ? `🐾 ${esc(p.pet.name)}` : '🥚 My egg'}</button>
-      ${journalOn ? '<button class="btn ghost small" id="journal">📔 Journal</button>' : ''}
-      <button class="btn ghost small" id="coll">${esc(th.collection)}</button>
-      <button class="btn ghost small" id="switchP">🔄 Switch player</button>
-      <button class="btn ghost small" id="grown">👪 Grown-ups</button>
+      <button class="adv-bar-btn" id="practice" aria-label="Free practice"><span class="abi" aria-hidden="true">📚</span><span class="abl">Practice</span></button>
+      <button class="adv-bar-btn" id="petBtn" aria-label="${hasPet(p) ? 'My creature' : 'My egg'}"><span class="abi" aria-hidden="true">${hasPet(p) ? '🐾' : '🥚'}</span><span class="abl">${hasPet(p) ? esc(p.pet.name) : 'My egg'}</span></button>
+      ${journalOn ? '<button class="adv-bar-btn" id="journal" aria-label="Journal"><span class="abi" aria-hidden="true">📔</span><span class="abl">Journal</span></button>' : ''}
+      <button class="adv-bar-btn" id="coll" aria-label="${esc(th.collection)}"><span class="abi" aria-hidden="true">📒</span><span class="abl">Collection</span></button>
+      <button class="adv-bar-btn" id="switchP" aria-label="Switch player"><span class="abi" aria-hidden="true">🔄</span><span class="abl">Players</span></button>
+      <button class="adv-bar-btn" id="grown" aria-label="Grown-ups"><span class="abi" aria-hidden="true">👪</span><span class="abl">Grown-ups</span></button>
     </nav>`, 'map');
   document.getElementById('me').onclick = () => showEditProfile(p);
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showMap({ y: window.scrollY }); };
@@ -2402,9 +2403,9 @@ async function showMap(opts = {}) {
   document.getElementById('grown').onclick = () => showParentGate(showParents, showMap);
   const el = document.getElementById('advMap'), seq = renderSeq;
   const stops = adv.stops.map(s => s && { icon: (SUBJECTS[s.subject] || {}).icon || '🎯', name: (SUBJECTS[s.subject] || {}).name || s.subject, stars: s.stars });
-  const hop = pendingHop; pendingHop = null;
   const mod = await loadAdventureMod();
   if (seq !== renderSeq) return;   // she left the map while the drawing loaded
+  const hop = pendingHop; pendingHop = null;
   if (mod) {
     const map = mod.drawMap(el, { world: adv.world, region: adv.region, stops, stop: adv.stop, bonus: !questDoneToday(p),
       boss: { face: mod.villainSvg(adv.world, adv.region), name: world.villainShort }, token: mod.tokenSvg(advLook(p)), from: hop != null && hop !== adv.stop ? hop : null });
@@ -2416,7 +2417,8 @@ async function showMap(opts = {}) {
   else { const next = el.querySelector('.adv-stop.next, .adv-list .btn:not(.ghost)'); if (next) next.scrollIntoView({ block: 'center' }); }
 }
 async function showRegionIntro() {
-  const p = me(), adv = p.adventure, world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
+  const p = me(); if (!p || !AR || !p.adventure) return showProfiles();
+  const adv = p.adventure, world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
   applyTheme(p.theme);
   await loadAdventureMod();
   render(`
@@ -2431,8 +2433,8 @@ async function showRegionIntro() {
   focusHeading();
   if (hasPet(p)) showCreature(document.getElementById('petView'), p, { interactive: false });
   document.getElementById('go').onclick = () => {
-    const k = AR.regionKey(adv);
-    if (!adv.seenIntro.includes(k)) { adv.seenIntro.push(k); adv.updated = Date.now(); save(); }
+    const a = me().adventure, k = AR.regionKey(a);
+    if (!a.seenIntro.includes(k)) { a.seenIntro.push(k); a.updated = Date.now(); save(); }
     showMap();
   };
 }
@@ -2450,7 +2452,7 @@ function showWorldPicker(celebrate = false) {
   focusHeading();
   if (celebrate) { sfx.win(); confetti('🏆'); }
   if (hasPet(p)) showCreature(document.getElementById('petView'), p, { interactive: false }).then(v => { if (v && celebrate) v.celebrate('grow'); });
-  bindAll('[data-world]', b => { AR.startWorld(adv, b.dataset.world); save(); showMap(); });
+  bindAll('[data-world]', b => { const a = me().adventure; if (!a.picking) return showMap(); AR.startWorld(a, b.dataset.world); save(); showMap(); });
 }
 
 const hexColor = n => '#' + n.toString(16).padStart(6, '0');
