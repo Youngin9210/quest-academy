@@ -1866,7 +1866,7 @@ function nextQuestion() {
   let q;
   const due = game.retry.findIndex(r => r.at <= game.n);
   if (due >= 0) q = game.retry.splice(due, 1)[0].q;
-  else if (game.quest) { const slot = game.slots[game.qi++]; q = slot.make(atLevel(me(), slot.subject), game); q.slot = slot; }
+  else if (game.slots) { const slot = game.slots[game.qi++]; q = slot.make(atLevel(me(), slot.subject), game); q.slot = slot; }
   else if (game.queue) q = bankQuestion(game.queue[game.qi++], p);
   else if (game.missionId === 'story' || (STORY_TYPES[game.missionId] && (game.n === 3 || game.n === 7))) {
     // word problems: every question in the Story mission, and 2 of 10 elsewhere
@@ -1890,8 +1890,10 @@ function nextQuestion() {
 }
 
 function drawPlay() {
-  const p = me(), th = theme(p), qs = game.q.slot;
-  const tm = qs ? { icon: '⭐', name: qs.review ? '🔁 Practice again' : `${SUBJECTS[qs.subject].icon} ${SUBJECTS[qs.subject].name}` }
+  const p = me(), th = theme(p), qs = game.q.slot, adv = game.adv, boss = adv && adv.kind === 'boss';
+  const tm = boss ? { icon: '⚔️', name: `Beat ${esc(AR.WORLDS[p.adventure.world].villainShort)}!` }
+    : adv ? { icon: SUBJECTS[game.subject].icon, name: `Stop ${adv.i + 1} · ${SUBJECTS[game.subject].name}` }
+    : qs ? { icon: '⭐', name: qs.review ? '🔁 Practice again' : `${SUBJECTS[qs.subject].icon} ${SUBJECTS[qs.subject].name}` }
     : BANK[game.missionId] ? BANK[game.missionId].mission : th.missions[game.missionId];
   const pct = (game.n / game.len) * 100;
   const q = game.q;
@@ -1902,7 +1904,7 @@ function drawPlay() {
         <span class="chip">${tm.icon} ${tm.name}</span>
         <span class="chip">${game.n + 1} / ${game.len}</span>
       </div>
-      <div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>
+      ${boss ? bossBarHtml() : `<div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>`}
       <div class="card question ${game.q.wordy ? 'wordy' : ''}">${game.q.prompt}</div>
       ${q.spell ? `<div class="row-actions"><button class="btn" id="checkText">Check ✓</button></div>`
       : q.order ? `<div class="row-actions"><button class="btn" id="checkOrder" disabled>Check ✓</button></div>`
@@ -1961,7 +1963,8 @@ function press(k) {
 
 // bring a missed question back a few questions later (in the Daily Quest only once, so the mix stays mixed)
 function pushRetry() {
-  if (game.quest && game.q.retried) return;
+  bossReact(false);
+  if (game.slots && game.q.retried) return;
   game.q.retried = true;
   game.retry.push({ q: game.q, at: game.n + 3 });
 }
@@ -1969,12 +1972,12 @@ function pushRetry() {
 // Shared success path for typed and tapped answers
 function answeredRight(p, th) {
   game.locked = true;
-  if (game.tries === 1) { record(p, game.q.key, true); game.firstTry++; }
+  if (game.tries === 1) { record(p, game.q.key, true); game.firstTry++; bossReact(true); }
   const fb = document.getElementById('fb');
   fb.className = 'feedback good'; fb.textContent = pick(th.cheers) + ' ' + th.pointIcon;
   sfx.good(); save();
   game.n++;
-  document.getElementById('bar').style.width = (game.n / game.len * 100) + '%';
+  const bar = document.getElementById('bar'); if (bar) bar.style.width = (game.n / game.len * 100) + '%';
   setTimeout(nextQuestion, game.tries === 1 ? 900 : 1300);
 }
 
@@ -2116,11 +2119,20 @@ function touchStreak(p) {
 }
 
 function finishMission() {
+  if (game.adv && game.adv.kind === 'boss') return finishBoss();
   if (game.quest) return finishQuest();
   const p = me(), th = theme(p);
   const m = p.missions[game.missionId] || (p.missions[game.missionId] = { plays: 0, history: [] });
   m.plays++; m.history = [...m.history, game.firstTry].slice(-20);
   logActivity(p, 'mission', game.missionId, game.subject, game.firstTry, game.len, game.started);
+  const advI = game.adv ? game.adv.i : null;
+  let advStars = 0;
+  if (advI != null) {
+    p.log[p.log.length - 1].a = 'stop';
+    advStars = AR.starsFor(game.firstTry);
+    const adv = p.adventure, s = adv && adv.stops[advI];
+    if (s && s.missionId === game.missionId && AR.finishStop(adv, advI, advStars)) pendingHop = advI;
+  }
   const len = game.len, perfect = game.firstTry === len;
   const earned = game.firstTry + (perfect ? 5 : 0);
   p.points += earned;
@@ -2146,15 +2158,17 @@ function finishMission() {
         : `<div class="prize">🏆</div><h2>You found everything in ${th.collection}!</h2>`}
       <p class="score">You got <b>${right} of ${len}</b> right on the first try
         ${perfect ? '<br>🎯 <b>Perfect!</b> +5 bonus' : ''}<br>+${earned} ${th.point} ${th.pointIcon}</p>
+      ${advI != null ? `<p class="adv-stars-big" aria-label="${advStars} of 3 stars">${[1, 2, 3].map(k => `<span class="${k <= advStars ? 'on' : ''}">★</span>`).join('')}</p>` : ''}
       <div class="row-actions">
-        <button class="btn" id="again">Play again</button>
+        ${advI != null ? `<button class="btn" id="home">Back to map</button><button class="btn ghost" id="again">Play again</button>`
+          : `<button class="btn" id="again">Play again</button>
         <button class="btn ghost" id="coll">${th.collection}</button>
-        <button class="btn ghost" id="home">Home</button>
+        <button class="btn ghost" id="home">Home</button>`}
       </div>
     </div>
   `);
-  document.getElementById('again').onclick = () => startMission(missionId);
-  document.getElementById('coll').onclick = showCollection;
+  document.getElementById('again').onclick = () => advI != null ? startStop(advI) : startMission(missionId);
+  const collBtn = document.getElementById('coll'); if (collBtn) collBtn.onclick = showCollection;
   document.getElementById('home').onclick = goHome;
   bindPetMoment(p);
 }
@@ -2260,6 +2274,80 @@ function ensureAdventure(p) {
   if (!adv.picking && AR.repickStops(adv, subjectsFor(p), advPick(p), s => advValid(p, s))) { adv.updated = Date.now(); save(); }
   return adv;
 }
+/* ----- Adventure: playing stops and the boss ----- */
+function slotGame(extra) {
+  return Object.assign({ used: new Set(), n: 0, firstTry: 0, recent: [], retry: [], q: null, input: '', tries: 0, locked: false,
+    queue: null, qi: 0, started: Date.now() }, extra);
+}
+const slotMaker = (subject, mid) => subject === 'math' ? mathMaker(mid) : bankMaker(mid);
+function startStop(i) {
+  const p = me(), adv = ensureAdventure(p), s = adv.stops[i];
+  if (!s || i > adv.stop || adv.picking) return goHome();
+  if (s.subject === 'typing') { typingStop = i; return startTyping(s.missionId); }
+  const make = slotMaker(s.subject, s.missionId);
+  game = slotGame({ missionId: s.missionId, subject: s.subject, adv: { kind: 'stop', i }, len: AR.STOP_LEN,
+    slots: Array.from({ length: AR.STOP_LEN }, () => ({ subject: s.subject, mid: s.missionId, make })) });
+  nextQuestion();
+}
+async function startBoss() {
+  const p = me(), adv = ensureAdventure(p);
+  if (!AR.bossReady(adv)) return goHome();
+  await loadAdventureMod();
+  // the region's own missions, in path order (typing has no single questions)
+  let list = adv.stops.filter(s => s && s.subject !== 'typing' && advValid(p, s)).map(s => ({ subject: s.subject, mid: s.missionId }));
+  if (!list.length) { const mid = advPick(p)('math', []); list = mid ? [{ subject: 'math', mid }] : []; }
+  if (!list.length) return goHome();
+  const slots = Array.from({ length: AR.BOSS_LEN }, (_, k) => { const x = list[k % list.length]; return { subject: x.subject, mid: x.mid, make: slotMaker(x.subject, x.mid) }; });
+  game = slotGame({ missionId: 'boss', subject: slots[0].subject, adv: { kind: 'boss' }, len: AR.BOSS_LEN, slots });
+  nextQuestion();
+}
+function bossBarHtml() {
+  const adv = me().adventure, face = advMod ? advMod.villainSvg(adv.world, adv.region) : '<span class="pet-emoji">👾</span>';
+  const hits = Math.min(game.firstTry, AR.BOSS_WIN);
+  return `<div class="boss-bar"><span class="boss-face" id="bossFace" aria-hidden="true">${face}</span>
+    <span class="boss-hits" role="img" aria-label="${hits} of ${AR.BOSS_WIN} hits">${Array.from({ length: AR.BOSS_WIN }, (_, k) => `<i class="${k < hits ? 'hit' : ''}"></i>`).join('')}</span></div>`;
+}
+// a first-try right answer knocks off a mark and makes the villain wobble; a miss makes it laugh
+function bossReact(ok) {
+  if (!game || !game.adv || game.adv.kind !== 'boss') return;
+  const face = document.getElementById('bossFace');
+  if (!face) return;
+  face.classList.remove('wobble', 'laugh'); void face.offsetWidth; face.classList.add(ok ? 'wobble' : 'laugh');
+  const marks = document.querySelectorAll('.boss-hits i');
+  if (ok && marks[game.firstTry - 1]) marks[game.firstTry - 1].classList.add('hit');
+  const hb = document.querySelector('.boss-hits'); if (hb) hb.setAttribute('aria-label', `${Math.min(game.firstTry, AR.BOSS_WIN)} of ${AR.BOSS_WIN} hits`);
+}
+function finishBoss() {
+  const p = me(), th = theme(p), adv = p.adventure, right = game.firstTry, len = game.len;
+  const won = AR.bossWon(right), world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
+  const face = advMod ? advMod.villainSvg(adv.world, adv.region) : '<span class="pet-emoji">👾</span>';
+  logActivity(p, 'boss', AR.regionKey(adv), 'quest', right, len, game.started);
+  const earned = right + (won ? 10 : 0);
+  p.points += earned;
+  touchStreak(p);
+  updatePet(p);
+  const result = won ? AR.finishBoss(adv) : null;
+  save();
+  game = null;
+  if (won) { sfx.win(); confetti(th.pointIcon); } else sfx.bad();
+  render(`
+    <div class="result stack card adv-boss-end">
+      <div class="adv-villain ${won ? 'run-off' : 'laugh'}" aria-hidden="true">${face}</div>
+      <h1>${won ? esc(reg.win) : `${esc(world.villainShort)} got away!`}</h1>
+      ${petMomentHtml(p)}
+      <p class="score">You got <b>${right} of ${len}</b> right on the first try
+        ${won ? '' : `<br>Get ${AR.BOSS_WIN} right to win. Try again?`}<br>+${earned} ${th.point} ${th.pointIcon}</p>
+      <div class="row-actions">
+        ${won ? `<button class="btn" id="next">${result === 'world' ? 'Finish the world!' : 'Next region →'}</button>`
+          : `<button class="btn" id="again">Try again</button><button class="btn ghost" id="home">Back to map</button>`}
+      </div>
+    </div>`, 'boss-end');
+  const nx = document.getElementById('next'); if (nx) nx.onclick = goHome;
+  const ag = document.getElementById('again'); if (ag) ag.onclick = startBoss;
+  const hm = document.getElementById('home'); if (hm) hm.onclick = goHome;
+  bindPetMoment(p);
+}
+
 const hexColor = n => '#' + n.toString(16).padStart(6, '0');
 function advLook(p) {
   if (!hasPet(p)) return { egg: true };
@@ -2490,6 +2578,12 @@ function finishTyping(lesson, t) {
   p.typeMiss = p.typeMiss || {};
   Object.entries(t.missed).forEach(([k, n]) => { p.typeMiss[k] = (p.typeMiss[k] || 0) + n; });
   const goal = typeTarget(p), stars = (acc >= 90 ? 1 : 0) + (acc >= 97 ? 1 : 0) + (wpm >= goal ? 1 : 0);
+  if (typingStop != null && p.adventure) {
+    const adv = p.adventure, s = adv.stops[typingStop];
+    p.log[p.log.length - 1].a = 'stop';
+    if (s && s.missionId === lesson.id && AR.finishStop(adv, typingStop, AR.typingStars(stars === 3))) pendingHop = typingStop;
+    typingStop = null;
+  }
   const earned = 3 + stars * 3;
   if (newPB) setTimeout(() => confetti('⚡'), 400);
   awardFinish(p, th, earned + (newPB ? 2 : 0), `
@@ -2519,7 +2613,7 @@ function awardFinish(p, th, earned, bodyHtml, again, allowPrize = true, title = 
       ${prize ? `<div class="prize">${prize[0]}</div><h2>${th.collectVerb}</h2><p style="font-size:1.4rem;margin:0">Meet <b>${esc(prize[1])}</b>! ${found + 1} of ${th.collectibles.length} in ${th.collection}.</p>` : ''}
       ${bodyHtml}
       <p class="score">+${earned} ${th.point} ${th.pointIcon}</p>
-      <div class="row-actions"><button class="btn" id="again">Play again</button>${prize ? `<button class="btn ghost" id="coll">${th.collection}</button>` : ''}<button class="btn ghost" id="home">Home</button></div>
+      <div class="row-actions"><button class="btn" id="again">Play again</button>${prize ? `<button class="btn ghost" id="coll">${th.collection}</button>` : ''}<button class="btn ghost" id="home">${homeScreen === 'map' ? 'Back to map' : 'Home'}</button></div>
     </div>`);
   document.getElementById('again').onclick = again;
   const coll = document.getElementById('coll'); if (coll) coll.onclick = showCollection;
