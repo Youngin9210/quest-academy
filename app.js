@@ -1084,6 +1084,7 @@ function bindAll(sel, fn) { $app.querySelectorAll(sel).forEach(el => el.addEvent
 /* ----- Who's playing (kids only) and first-run routing ----- */
 const FR = window.FirstRun || { firstScreen: ({ players }) => players ? 'profiles' : 'welcome', setupSteps: () => ['kids'], stepOf: () => ({}), needsKidWelcome: () => false, joinNames: n => n.join(', ') };   // first-run-rules.js failed to load (mixed-version boot)
 function showProfiles() {
+  pendingHop = null;
   state.current = null; writeStore();
   applyTheme('space');
   if (state.sync.pendingRecovery && !state.profiles.length) { setup.path = 'account'; return showSetupRecovery(state.sync.pendingRecovery); }
@@ -1105,6 +1106,7 @@ function showProfiles() {
   document.getElementById('parents').onclick = () => showParentGate();
 }
 function openPlayer(p) {
+  pendingHop = null;
   state.current = p.id; save();
   if (!FR.needsKidWelcome(p)) { homeScreen = 'map'; return goHome(); }
   return p.pickLook ? showKidWorld(p) : showKidTour(p, 0);
@@ -2271,7 +2273,8 @@ function advPick(p) {
 }
 const advValid = (p, s) => s.subject === 'typing' ? !!TYPE_BY_ID[s.missionId] : questMissions(p, s.subject).includes(s.missionId);
 function ensureAdventure(p) {
-  if (!p.adventure || !AR.WORLDS[p.adventure.world]) p.adventure = AR.newAdventure(AR.WORLDS[p.theme] ? p.theme : 'space');
+  if (!p.adventure || typeof p.adventure !== 'object') p.adventure = AR.newAdventure(AR.WORLDS[p.theme] ? p.theme : 'space');
+  else AR.normalizeAdventure(p.adventure);
   const adv = p.adventure;
   if (!adv.picking && AR.repickStops(adv, subjectsFor(p), advPick(p), s => advValid(p, s))) { adv.updated = Date.now(); save(); }
   return adv;
@@ -2285,7 +2288,7 @@ const slotMaker = (subject, mid) => subject === 'math' ? mathMaker(mid) : bankMa
 function startStop(i) {
   const p = me(), adv = ensureAdventure(p), s = adv.stops[i];
   if (!s || i > adv.stop || adv.picking) return goHome();
-  typingStop = null;
+  typingStop = null; pendingHop = null;
   if (s.subject === 'typing') { typingStop = i; return startTyping(s.missionId); }
   const make = slotMaker(s.subject, s.missionId);
   game = slotGame({ missionId: s.missionId, subject: s.subject, adv: { kind: 'stop', i }, len: AR.STOP_LEN,
@@ -2302,14 +2305,14 @@ async function startBoss() {
   if (!list.length) { const mid = advPick(p)('math', []); list = mid ? [{ subject: 'math', mid }] : []; }
   if (!list.length) return goHome();
   const slots = Array.from({ length: AR.BOSS_LEN }, (_, k) => { const x = list[k % list.length]; return { subject: x.subject, mid: x.mid, make: slotMaker(x.subject, x.mid) }; });
-  game = slotGame({ missionId: 'boss', subject: slots[0].subject, adv: { kind: 'boss' }, len: AR.BOSS_LEN, slots });
+  game = slotGame({ missionId: 'boss', subject: slots[0].subject, adv: { kind: 'boss', key: AR.regionKey(adv), laps: adv.laps || 0 }, len: AR.BOSS_LEN, slots });
   nextQuestion();
 }
 function bossBarHtml() {
   const adv = me().adventure, face = advMod ? advMod.villainSvg(adv.world, adv.region) : '<span class="pet-emoji">👾</span>';
   const hits = Math.min(game.firstTry, AR.BOSS_WIN);
   return `<div class="boss-bar"><span class="boss-face" id="bossFace" aria-hidden="true">${face}</span>
-    <span class="boss-hits" role="img" aria-label="${hits} of ${AR.BOSS_WIN} hits">${Array.from({ length: AR.BOSS_WIN }, (_, k) => `<i class="${k < hits ? 'hit' : ''}"></i>`).join('')}</span></div>`;
+    <span class="boss-hits" role="img" aria-live="polite" aria-label="${hits} of ${AR.BOSS_WIN} hits">${Array.from({ length: AR.BOSS_WIN }, (_, k) => `<i class="${k < hits ? 'hit' : ''}"></i>`).join('')}</span></div>`;
 }
 // a first-try right answer knocks off a mark and makes the villain wobble; a miss makes it laugh
 function bossReact(ok) {
@@ -2323,6 +2326,7 @@ function bossReact(ok) {
 }
 function finishBoss() {
   const p = me(), th = theme(p), adv = p.adventure, right = game.firstTry, len = game.len;
+  const fought = game.adv;
   const won = AR.bossWon(right), world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
   const face = advMod ? advMod.villainSvg(adv.world, adv.region) : '<span class="pet-emoji">👾</span>';
   logActivity(p, 'boss', AR.regionKey(adv), 'quest', right, len, game.started);
@@ -2330,7 +2334,7 @@ function finishBoss() {
   p.points += earned;
   touchStreak(p);
   updatePet(p);
-  const result = won ? AR.finishBoss(adv) : null;
+  const result = won && fought && AR.regionKey(adv) === fought.key && (adv.laps || 0) === fought.laps ? AR.finishBoss(adv) : null;
   save();
   game = null;
   if (won) { sfx.win(); confetti(th.pointIcon); } else sfx.bad();
@@ -2342,7 +2346,7 @@ function finishBoss() {
       <p class="score">You got <b>${right} of ${len}</b> right on the first try
         ${won ? '' : `<br>Get ${AR.BOSS_WIN} right to win. Try again?`}<br>+${earned} ${th.point} ${th.pointIcon}</p>
       <div class="row-actions">
-        ${won ? `<button class="btn" id="next">${result === 'world' ? 'Finish the world!' : 'Next region →'}</button>`
+        ${won ? `<button class="btn" id="next">${result === 'world' ? 'Finish the world!' : result ? 'Next region →' : 'Back to map'}</button>`
           : `<button class="btn" id="again">Try again</button><button class="btn ghost" id="home">Back to map</button>`}
       </div>
     </div>`, 'boss-end');
@@ -2385,12 +2389,12 @@ async function showMap(opts = {}) {
     </div>
     <div id="advMap" class="adv-map-wrap"></div>
     <nav class="adv-bar" aria-label="More to do">
-      <button class="adv-bar-btn" id="practice" aria-label="Free practice"><span class="abi" aria-hidden="true">📚</span><span class="abl">Practice</span></button>
-      <button class="adv-bar-btn" id="petBtn" aria-label="${hasPet(p) ? 'My creature' : 'My egg'}"><span class="abi" aria-hidden="true">${hasPet(p) ? '🐾' : '🥚'}</span><span class="abl">${hasPet(p) ? esc(p.pet.name) : 'My egg'}</span></button>
-      ${journalOn ? '<button class="adv-bar-btn" id="journal" aria-label="Journal"><span class="abi" aria-hidden="true">📔</span><span class="abl">Journal</span></button>' : ''}
-      <button class="adv-bar-btn" id="coll" aria-label="${esc(th.collection)}"><span class="abi" aria-hidden="true">📒</span><span class="abl">Collection</span></button>
-      <button class="adv-bar-btn" id="switchP" aria-label="Switch player"><span class="abi" aria-hidden="true">🔄</span><span class="abl">Players</span></button>
-      <button class="adv-bar-btn" id="grown" aria-label="Grown-ups"><span class="abi" aria-hidden="true">👪</span><span class="abl">Grown-ups</span></button>
+      <button class="adv-bar-btn" id="practice"><span class="abi" aria-hidden="true">📚</span><span class="abl">Practice</span></button>
+      <button class="adv-bar-btn" id="petBtn"><span class="abi" aria-hidden="true">${hasPet(p) ? '🐾' : '🥚'}</span><span class="abl">${hasPet(p) ? esc(p.pet.name) : 'My egg'}</span></button>
+      ${journalOn ? '<button class="adv-bar-btn" id="journal"><span class="abi" aria-hidden="true">📔</span><span class="abl">Journal</span></button>' : ''}
+      <button class="adv-bar-btn" id="coll"><span class="abi" aria-hidden="true">📒</span><span class="abl">Finds</span></button>
+      <button class="adv-bar-btn" id="switchP"><span class="abi" aria-hidden="true">🔄</span><span class="abl">Players</span></button>
+      <button class="adv-bar-btn" id="grown"><span class="abi" aria-hidden="true">👪</span><span class="abl">Grown-ups</span></button>
     </nav>`, 'map');
   document.getElementById('me').onclick = () => showEditProfile(p);
   document.getElementById('snd').onclick = () => { state.sound = !state.sound; save(); showMap({ y: window.scrollY }); };
@@ -2416,20 +2420,26 @@ async function showMap(opts = {}) {
   if (opts.y != null) window.scrollTo(0, opts.y);
   else { const next = el.querySelector('.adv-stop.next, .adv-list .btn:not(.ghost)'); if (next) next.scrollIntoView({ block: 'center' }); }
 }
-async function showRegionIntro() {
+function showRegionIntro() {
   const p = me(); if (!p || !AR || !p.adventure) return showProfiles();
   const adv = p.adventure, world = AR.WORLDS[adv.world], reg = world.regions[adv.region];
   applyTheme(p.theme);
-  await loadAdventureMod();
   render(`
     <div class="kid-welcome stack adv-intro">
       <p class="setup-step center">${esc(world.name)} world · Region ${adv.region + 1} of ${AR.REGIONS}</p>
       <div class="pet-view large" id="petView">${hasPet(p) ? '' : '<span class="pet-emoji" aria-hidden="true">🥚</span>'}</div>
       <h1 id="riH">${esc(reg.name)}</h1>
       <p class="adv-problem">${esc(reg.problem)}</p>
-      ${advMod ? `<div class="adv-watch"><span class="adv-watch-face" aria-hidden="true">${advMod.villainSvg(adv.world, adv.region)}</span><span>Watch out for ${esc(world.villainShort)}!</span></div>` : ''}
+      <div class="adv-watch" id="advWatch" hidden></div>
       <div class="setup-actions"><button class="btn big-btn" id="go">Let's go!</button></div>
     </div>`, 'intro');
+  const seq = renderSeq;
+  loadAdventureMod().then(m => {
+    if (!m || seq !== renderSeq) return;
+    const w = document.getElementById('advWatch'); if (!w) return;
+    w.innerHTML = '<span class="adv-watch-face" aria-hidden="true">' + m.villainSvg(adv.world, adv.region) + '</span><span>Watch out for ' + esc(world.villainShort) + '!</span>';
+    w.hidden = false;
+  });
   focusHeading();
   if (hasPet(p)) showCreature(document.getElementById('petView'), p, { interactive: false });
   document.getElementById('go').onclick = () => {
@@ -2523,7 +2533,7 @@ function finishQuest() {
       ${first ? '<p class="muted" style="margin:0">A new quest is ready tomorrow.</p>' : ''}
       <div class="row-actions">
         ${keyboard && typeNext ? `<button class="btn" id="typeBonus">⌨️ Typing warm-up: ${esc(typeNext.name)}</button>` : ''}
-        <button class="btn ${keyboard ? 'ghost' : ''}" id="home">Home</button>
+        <button class="btn ${keyboard ? 'ghost' : ''}" id="home">${homeScreen === 'map' ? 'Back to map' : 'Home'}</button>
       </div>
     </div>
   `);
@@ -3121,8 +3131,8 @@ function showAddChild() {
 }
 
 function adventureLine(p) {
-  const adv = p.adventure;
-  if (!AR || !adv || !AR.WORLDS[adv.world]) return '';
+  if (!AR || !p.adventure || typeof p.adventure !== 'object') return '';
+  const adv = AR.normalizeAdventure(JSON.parse(JSON.stringify(p.adventure)));
   const w = AR.WORLDS[adv.world], stops = logSince(p, 7).filter(e => e.a === 'stop').length;
   const where = adv.picking ? `finished the ${w.name} world` : `${esc(w.regions[adv.region].name)} (region ${adv.region + 1} of ${AR.REGIONS})`;
   return `<p class="muted gu-note">🗺️ Adventure: ${esc(w.name)} world · ${where} · ${plural(stops, 'stop')} this week</p>`;
