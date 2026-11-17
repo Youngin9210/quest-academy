@@ -2,7 +2,9 @@
 /*
  * Quest Academy accounts + sync.
  * - Each family has its own account (name + password). Families never see each other.
- * - New families can only sign up with a one-time invite link made by the site owner's family.
+ * - New families can sign up two ways: with a one-time invite link made by the site owner's family, or
+ *   openly without one. Open sign-ups are capped per IP (3 per 24 hours, and each counts toward the
+ *   10-tries-per-15-minutes limit) so the sign-up form can't be used to mass-create accounts.
  * - Each device signs in once and gets its own token; progress syncs per family.
  * Settings (database) live in quest-config.php, OUTSIDE the public folder. See server/quest-config.sample.php.
  */
@@ -39,6 +41,7 @@ $db->exec("CREATE TABLE IF NOT EXISTS qa_families (id $AI, name VARCHAR(60) NOT 
 $db->exec('CREATE TABLE IF NOT EXISTS qa_tokens (token_hash CHAR(64) PRIMARY KEY, family_id INT NOT NULL, created BIGINT NOT NULL, last_used BIGINT NOT NULL)');
 $db->exec('CREATE TABLE IF NOT EXISTS qa_invites (code_hash CHAR(64) PRIMARY KEY, created_by INT NOT NULL, created BIGINT NOT NULL, expires BIGINT NOT NULL, used_by INT NULL)');
 $db->exec('CREATE TABLE IF NOT EXISTS qa_attempts (ip VARCHAR(64) NOT NULL, at BIGINT NOT NULL)');
+$db->exec('CREATE TABLE IF NOT EXISTS qa_signups (ip VARCHAR(64) NOT NULL, at BIGINT NOT NULL)');
 $db->exec('CREATE TABLE IF NOT EXISTS qa_players (family_id INT NOT NULL DEFAULT 0, id VARCHAR(64) NOT NULL, data MEDIUMTEXT NOT NULL,
   updated BIGINT NOT NULL, deleted TINYINT NOT NULL DEFAULT 0, PRIMARY KEY (family_id, id))');
 // Upgrade the first version of qa_players (one shared family, keyed by id only)
@@ -124,21 +127,34 @@ if ($action === 'legacy') {
 }
 
 // Is this invite link still good? (so the app can show the sign-up form)
+// Sign up: with an invite (checked and used up) or without one (open sign-up, capped per IP).
 if ($action === 'invite_check' || $action === 'signup') {
-  $ch = hash('sha256', (string) ($req['invite'] ?? ''));
-  $q = $db->prepare('SELECT * FROM qa_invites WHERE code_hash = ?'); $q->execute([$ch]); $inv = $q->fetch(PDO::FETCH_ASSOC);
-  if (!$inv || $inv['used_by'] !== null || (int) $inv['expires'] < $now) fail($db, $ip, $now, 'This invite link has expired or was already used. Ask for a new one.');
-  if ($action === 'invite_check') out(200, ['ok' => true]);
+  $invite = (string) ($req['invite'] ?? '');
+  $open = $action === 'signup' && $invite === '';
+  $ch = hash('sha256', $invite);
+  if (!$open) {
+    $q = $db->prepare('SELECT * FROM qa_invites WHERE code_hash = ?'); $q->execute([$ch]); $inv = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$inv || $inv['used_by'] !== null || (int) $inv['expires'] < $now) fail($db, $ip, $now, 'This invite link has expired or was already used. Ask for a new one.');
+    if ($action === 'invite_check') out(200, ['ok' => true]);
+  }
   $name = trim((string) ($req['family'] ?? '')); $pass = (string) ($req['password'] ?? '');
   if (!valid_name($name)) out(400, ['error' => 'Family name must be 2 to 40 characters.']);
   if (!valid_pass($pass)) out(400, ['error' => 'Password must be at least 8 characters.']);
   if (family_by_name($db, $name)) out(409, ['error' => 'That family name is taken. Try adding something, like your last name.']);
+  if ($open) {
+    $db->prepare('DELETE FROM qa_signups WHERE at < ?')->execute([$now - 24 * 3600 * 1000]);
+    $q = $db->prepare('SELECT COUNT(*) FROM qa_signups WHERE ip = ?'); $q->execute([$ip]);
+    if ((int) $q->fetchColumn() >= 3) out(429, ['error' => 'Too many new families from this connection today. Try again tomorrow, or sign in to the family you made.']);
+    // counts toward the 10-tries-per-15-minutes limit too, so sign-ups can't be sprayed
+    $db->prepare('INSERT INTO qa_attempts (ip, at) VALUES (?, ?)')->execute([$ip, $now]);
+  }
   $recovery = words_code();
   $db->beginTransaction();
   $db->prepare('INSERT INTO qa_families (name, name_key, pass_hash, recovery_hash, is_admin, created) VALUES (?, ?, ?, ?, 0, ?)')
     ->execute([$name, name_key($name), password_hash($pass, PASSWORD_DEFAULT), password_hash($recovery, PASSWORD_DEFAULT), $now]);
   $fid = (int) $db->lastInsertId();
-  $db->prepare('UPDATE qa_invites SET used_by = ? WHERE code_hash = ?')->execute([$fid, $ch]);
+  if ($open) $db->prepare('INSERT INTO qa_signups (ip, at) VALUES (?, ?)')->execute([$ip, $now]);
+  else $db->prepare('UPDATE qa_invites SET used_by = ? WHERE code_hash = ?')->execute([$fid, $ch]);
   $db->commit();
   $f = $db->query("SELECT * FROM qa_families WHERE id = $fid")->fetch(PDO::FETCH_ASSOC);
   out(200, ['token' => new_token($db, $fid, $now), 'recovery' => $recovery] + me_info($f));
