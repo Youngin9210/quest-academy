@@ -22,7 +22,7 @@ Each stop has 6 questions, so each game has 6 moves.
 |---|---|---|---|---|---|
 | **Build** | adds 1 of 6 pieces, bottom to top | rocket | sandcastle | doghouse | layer cake |
 | **Journey** | the creature token hops 1 of 6 steps toward a goal | over craters to a flag | past kelp to a treasure chest | along a park path to a picnic blanket | across stepping stones to a gingerbread house |
-| **Collect** | a treasure drops into a bag with 6 slots | star crystals | pearls | bones and toys | sprinkles and cherries |
+| **Collect** | a treasure drops into a bag with 6 slots | star crystals | pearls | bones | cherries |
 
 - **Which game:** it comes from the stop's position, `i % 3`: 0 Build, 1 Journey, 2 Collect. So stops 1 and 4 are Build, 2 and 5 Journey, and 3 Collect. A replay of a stop plays the same game.
 - **Typing stops** keep their typing lesson, with no scene.
@@ -67,8 +67,8 @@ Sync, merging and older saved data are not affected.
 ## Code
 
 - **`scenes.js` (new ES module).** It is loaded with a dynamic `import()` when a stop starts, like `adventure.js`, with `ASSET_Q` cache busting. It exports:
-  - `sceneSvg(type, world, look, moves)`: the scene's markup for the moves so far.
-  - `sceneMove(el, type, kind)`: animates the newest move (`kind` is `'gold'` or `'plain'`) or a miss (`kind` is `'miss'`) inside the drawn scene.
+  - `sceneHtml({ type, world, token, moves, fresh })`: the scene's markup for the moves so far (`token` is the creature token's SVG from `adventure.js`; `fresh` marks the newest move to animate).
+  - `sceneMove(el, opts, kind)`: redraws the scene inside `el` with the newest move animated (`kind` is `'gold'` or `'plain'`), or plays the miss reaction (`kind` is `'miss'`).
   - `trophySvg(type, world, gold)`: the small drawing for the map.
   - `sceneLabel(type, world, count)`: the aria-label text.
 - **`adventure-rules.js`.** Adds `SCENES = ['build', 'journey', 'collect']`, `sceneFor(i)` (returns `SCENES[i % 3]`) and `trophyGold(stars)` (true at 3). These have Node tests.
