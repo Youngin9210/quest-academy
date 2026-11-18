@@ -30,7 +30,8 @@ test('journey moves the token one spot per move and hops when fresh', () => {
   assert.doesNotMatch(a, /sc-token hop/);
   const b = S.sceneHtml({ type: 'journey', world: 'pets', token: '', moves: ['gold', 'gold', 'plain'], fresh: true });
   assert.match(b, /class="sc-token hop"/);
-  assert.match(b, /data-to="[\d.]+%"/);
+  assert.match(b, /--from:[\d.]+%/);
+  assert.doesNotMatch(a, /--from/);
   assert.match(a, /aria-label="Journey to the picnic: 3 of 6 steps"/);
 });
 

@@ -139,11 +139,12 @@ export function sceneHtml(o) {
     art = buildSvg(w, moves, fresh); if (fresh) spark = [250, 118 - (n - 1) * 20];
   }
   const shine = fresh && moves[n - 1] === 'gold' ? sparkSvg(spark[0], spark[1]) : '';
-  const pct = x => (x / W * 100).toFixed(2) + '%';
-  return `<div class="scene" role="img" aria-label="${esc(sceneLabel(t, w, n))}" style="background:linear-gradient(${L.sky[0]}, ${L.sky[1]})">
+  const pct = x => (x / W * 100).toFixed(2) + '%', groundPct = (GROUND / H * 100).toFixed(2) + '%';
+  // the ground runs the full width of the strip, past the drawing's own box
+  return `<div class="scene" role="img" aria-label="${esc(sceneLabel(t, w, n))}" style="background:linear-gradient(${L.sky[0]}, ${L.sky[1]} ${groundPct}, ${L.ground} ${groundPct})">
     <div class="scene-box"><svg viewBox="0 0 ${W} ${H}" aria-hidden="true" focusable="false">${decoSvg(w)}
       <rect x="0" y="${GROUND}" width="${W}" height="${H - GROUND}" fill="${L.ground}"/>${art}${shine}</svg>
-      <div class="sc-token${from != null ? ' hop' : ''}" style="left:${pct(from != null ? from : tokX)};top:${(GROUND / H * 100).toFixed(2)}%" data-to="${pct(tokX)}" aria-hidden="true">${o.token || ''}</div>
+      <div class="sc-token${from != null ? ' hop' : ''}" style="left:${pct(tokX)};top:${(GROUND / H * 100).toFixed(2)}%${from != null ? `;--from:${pct(from)}` : ''}" aria-hidden="true">${o.token || ''}</div>
     </div></div>`;
 }
 
@@ -155,9 +156,8 @@ export function sceneMove(el, o, kind) {
     s.classList.remove('sc-miss'); void s.offsetWidth; s.classList.add('sc-miss');
     return;
   }
+  // the Journey hop is pure CSS: the token is drawn at its new spot and slides in from --from
   el.innerHTML = sceneHtml(Object.assign({}, o, { fresh: true }));
-  const tok = el.querySelector('.sc-token.hop');
-  if (tok) requestAnimationFrame(() => requestAnimationFrame(() => { tok.style.left = tok.dataset.to; }));
 }
 
 export function trophySvg(type, world, gold) {
