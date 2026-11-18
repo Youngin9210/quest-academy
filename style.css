@@ -717,3 +717,33 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
   .adv-stop > .adv-icon, .adv-stop > .adv-face { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   .adv-token > svg { position: absolute; inset: 0; }
 }
+/* stop games (scenes.js): the scene strip above a map stop's questions, and the trophies on the map */
+.scene { border-radius: 18px; overflow: hidden; }
+.scene-box { position: relative; width: min(100%, 360px); aspect-ratio: 360 / 140; margin: 0 auto; }
+.scene-box svg { display: block; width: 100%; height: 100%; }
+.sc-token { position: absolute; width: 11%; aspect-ratio: 1; transform: translate(-50%, -100%); transition: left .6s ease-in-out; pointer-events: none; }
+.sc-token.hop { animation: scHop .6s ease-in-out; }
+.sc-ghost, .sc-ghost * { fill: none; stroke: rgba(255, 255, 255, .65); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.sc-slot { fill: rgba(0, 0, 0, .2); }
+.sc-gold { filter: drop-shadow(0 0 4px rgba(255, 207, 63, .9)); }
+.sc-piece, .sc-ghost, .sc-spark { transform-box: fill-box; transform-origin: center; }
+.sc-new { animation: scDrop .45s ease-out; }
+.sc-spark { animation: scSpark .8s ease-out forwards; }
+.sc-miss .sc-next { animation: scBounce .5s ease-in-out; }
+.sc-miss .sc-token { animation: scWobble .5s ease-in-out; }
+@keyframes scDrop { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes scSpark { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@keyframes scBounce { 0%, 100% { transform: none; } 30% { transform: translateY(-10px); } 60% { transform: translateY(2px); } }
+@keyframes scWobble { 0%, 100% { transform: translate(-50%, -100%) rotate(0); } 25% { transform: translate(-50%, -100%) rotate(-10deg); } 75% { transform: translate(-50%, -100%) rotate(10deg); } }
+@keyframes scHop { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 18px)); } }
+.adv-trophy { position: absolute; transform: translate(-50%, -50%); width: 12%; aspect-ratio: 1; pointer-events: none; z-index: 1; }
+@supports not (aspect-ratio: 1) {
+  .scene-box { height: 140px; }
+  .sc-token { height: 40px; }
+  .adv-trophy { height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-new, .sc-miss .sc-next, .sc-miss .sc-token, .sc-token.hop { animation: none; }
+  .sc-token { transition: none; }
+  .sc-spark { display: none; }
+}
