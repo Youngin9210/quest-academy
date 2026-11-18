@@ -117,8 +117,8 @@ function decoSvg(w) {
     .map(([x, y], k) => `<circle cx="${x}" cy="${y}" r="${k % 3 ? 1.2 : 1.8}" fill="#fff" opacity=".7"/>`).join('');
 }
 
-const sparkSvg = (x, y) => `<g class="sc-spark" transform="translate(${x} ${y})" fill="${GOLD}">${[[0, -16], [15, 0], [0, 16], [-15, 0]]
-  .map(([dx, dy]) => `<path transform="translate(${dx} ${dy})" d="M0 -5 L1.5 -1.5 5 0 1.5 1.5 0 5 -1.5 1.5 -5 0 -1.5 -1.5Z"/>`).join('')}</g>`;
+const sparkSvg = (x, y) => `<g transform="translate(${x} ${y})"><g class="sc-spark" fill="${GOLD}">${[[0, -16], [15, 0], [0, 16], [-15, 0]]
+  .map(([dx, dy]) => `<path transform="translate(${dx} ${dy})" d="M0 -5 L1.5 -1.5 5 0 1.5 1.5 0 5 -1.5 1.5 -5 0 -1.5 -1.5Z"/>`).join('')}</g></g>`;
 
 export function sceneLabel(type, world, count) {
   const w = worldOf(world), t = typeOf(type);

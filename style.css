@@ -739,8 +739,10 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 @keyframes scHop { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 18px)); } }
 .adv-trophy { position: absolute; transform: translate(-50%, -50%); width: 12%; aspect-ratio: 1; pointer-events: none; z-index: 1; }
 @supports not (aspect-ratio: 1) {
-  .scene-box { height: 140px; }
-  .sc-token { height: 40px; }
+  .scene-box { height: 0; padding-top: 38.89%; }
+  .scene-box > svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .sc-token { height: 0; padding-top: 11%; }
+  .sc-token > svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   .adv-trophy { height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {

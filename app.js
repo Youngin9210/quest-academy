@@ -2008,7 +2008,8 @@ function answeredRight(p, th) {
   sfx.good(); save();
   game.n++;
   const bar = document.getElementById('bar'); if (bar) bar.style.width = (game.n / game.len * 100) + '%';
-  setTimeout(nextQuestion, game.tries === 1 ? 900 : 1300);
+  const g = game;
+  setTimeout(() => { if (game === g) nextQuestion(); }, game.tries === 1 ? 900 : 1300);
 }
 
 function choose(i) {

@@ -55,3 +55,10 @@ test('trophies are gold only when asked', () => {
     assert.doesNotMatch(plain, /#ffcf3f/);
   }
 });
+
+test('the gold sparkle keeps its position: sc-spark has no transform attribute of its own', () => {
+  const h = S.sceneHtml({ type: 'collect', world: 'ocean', token: '', moves: ['plain', 'gold'], fresh: true });
+  assert.equal(count(h, 'sc-spark'), 1);
+  assert.doesNotMatch(h, /class="sc-spark"[^>]*transform=/);
+  assert.doesNotMatch(h, /transform=[^>]*class="sc-spark"/);
+});
