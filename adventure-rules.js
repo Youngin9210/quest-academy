@@ -5,6 +5,10 @@
   'use strict';
 
   const STOPS = 5, STOP_LEN = 6, BOSS_LEN = 8, BOSS_WIN = 6, REGIONS = 6;
+  // stop games (part 2): the game at a stop comes from its position, and a stop's map trophy is gold at 3 stars
+  const SCENES = ['build', 'journey', 'collect'];
+  const sceneFor = i => SCENES[((i % 3) + 3) % 3];
+  const trophyGold = stars => (stars || 0) >= 3;
   const R = (name, problem, win) => ({ name, problem, win });
   const WORLDS = {
     space: { name: 'Space', villain: 'Glitch the space gremlin', villainShort: 'Glitch', regions: [
@@ -155,7 +159,7 @@
     return m;
   }
 
-  const api = { STOPS, STOP_LEN, BOSS_LEN, BOSS_WIN, REGIONS, WORLDS, WORLD_ORDER, regionKey, regionName, newAdventure,
+  const api = { STOPS, STOP_LEN, BOSS_LEN, BOSS_WIN, REGIONS, SCENES, sceneFor, trophyGold, WORLDS, WORLD_ORDER, regionKey, regionName, newAdventure,
     fillStops, repickStops, starsFor, typingStars, bossWon, bossReady, finishStop, finishBoss, nextWorlds, startWorld,
     progressKey, mergeAdventure, normalizeAdventure };
   root.AdventureRules = api;

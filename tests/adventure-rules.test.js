@@ -171,3 +171,13 @@ test('mergeAdventure: equal progress, newer updated wins in both orders', () => 
     assert.equal(m.world, 'space'); assert.equal(m.stops[0].subject, 'reading');
   }
 });
+
+test('stops rotate Build, Journey, Collect by position', () => {
+  assert.deepEqual(AR.SCENES, ['build', 'journey', 'collect']);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(AR.sceneFor), ['build', 'journey', 'collect', 'build', 'journey', 'collect']);
+});
+
+test('a map trophy is gold only at 3 stars', () => {
+  assert.deepEqual([0, 1, 2, 3].map(AR.trophyGold), [false, false, false, true]);
+  assert.equal(AR.trophyGold(undefined), false);
+});
