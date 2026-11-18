@@ -72,12 +72,14 @@ const escAttr = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&
 
 export function drawMap(el, o) {
   const tokenAt = i => { const j = Math.min(i, POINTS.length - 1), [dx, dy] = j === 5 ? [78, 12] : [40, -34]; return [POINTS[j][0] + dx, POINTS[j][1] + dy]; };
+  // trophies sit on the outer side of each marker
+  const trophyAt = i => [POINTS[i][0] < W / 2 ? POINTS[i][0] - 64 : POINTS[i][0] + 64, POINTS[i][1] + 8];
   const stops = o.stops.map((s, i) => {
     if (!s) return '';
     const done = i < o.stop, next = i === o.stop, locked = !done && !next, stars = s.stars || 0;
     const label = done ? `Stop ${i + 1}: ${s.name}, ${stars} ${stars === 1 ? 'star' : 'stars'}. Play again` : next ? `Stop ${i + 1}: ${s.name}. Play now` : `Stop ${i + 1}: ${s.name}, locked`;
     return `<button type="button" class="adv-stop ${done ? 'done' : ''} ${next ? 'next' : ''}" data-stop="${i}" style="${pct(POINTS[i])}" aria-label="${escAttr(label)}" ${locked ? 'disabled' : ''}>
-      <span class="adv-icon" aria-hidden="true">${s.icon}</span>${done ? starRow(s.stars) : ''}</button>`;
+      <span class="adv-icon" aria-hidden="true">${s.icon}</span>${done ? starRow(s.stars) : ''}</button>${done && s.trophy ? `<span class="adv-trophy" style="${pct(trophyAt(i))}" aria-hidden="true">${s.trophy}</span>` : ''}`;
   }).join('');
   const bossOpen = o.stop >= 5;
   const boss = `<button type="button" class="adv-stop adv-boss ${bossOpen ? 'next' : ''}" data-stop="5" style="${pct(POINTS[5])}" aria-label="${escAttr(bossOpen ? `Boss: ${o.boss.name}. Play now` : `Boss: ${o.boss.name}, locked`)}" ${bossOpen ? '' : 'disabled'}>

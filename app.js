@@ -993,6 +993,12 @@ function loadAdventureMod() {
   if (!advModP) advModP = import('./adventure.js' + (ASSET_Q ? '?' + ASSET_Q : '')).then(m => (advMod = m)).catch(() => { advModP = null; return null; });
   return advModP;
 }
+// stop games (part 2): the scene drawn above the questions at a map stop
+let scenesMod = null, scenesModP = null;
+function loadScenesMod() {
+  if (!scenesModP) scenesModP = import('./scenes.js' + (ASSET_Q ? '?' + ASSET_Q : '')).then(m => (scenesMod = m)).catch(() => { scenesModP = null; return null; });
+  return scenesModP;
+}
 let homeScreen = 'practice';   // 'map' or 'practice': where Home / Back goes
 let pendingHop = null;         // stop index the token hops from on the next map draw
 let typingStop = null;         // stop index while a typing stop is being played
@@ -1893,6 +1899,24 @@ function nextQuestion() {
   drawPlay();
 }
 
+const sceneOpts = () => ({ type: game.scene, world: me().adventure.world, token: advMod.tokenSvg(advLook(me())), moves: game.moves });
+// one move in the stop's game: 'gold' (first try), 'plain' (after a miss or the shown answer) or 'miss' (a wobble, nothing lost)
+function sceneStep(kind) {
+  if (!game || !game.scene || !scenesMod || !advMod) return;
+  if (kind !== 'miss') { if (game.moves.length >= AR.STOP_LEN) return; game.moves.push(kind); }
+  scenesMod.sceneMove(document.getElementById('scene'), sceneOpts(), kind);
+}
+// "Next →" after the answer was shown: a plain move, with a moment to see it at a stop
+function afterReveal(e) {
+  if (!game) return;
+  if (e && e.currentTarget) e.currentTarget.disabled = true;
+  game.n++;
+  if (!game.scene) return nextQuestion();
+  const g = game;
+  sceneStep('plain');
+  setTimeout(() => { if (game === g) nextQuestion(); }, 700);
+}
+
 function drawPlay() {
   const p = me(), th = theme(p), qs = game.q.slot, adv = game.adv, boss = adv && adv.kind === 'boss';
   const tm = boss ? { icon: '⚔️', name: `Beat ${esc(AR.WORLDS[p.adventure.world].villainShort)}!` }
@@ -1908,7 +1932,8 @@ function drawPlay() {
         <span class="chip">${tm.icon} ${tm.name}</span>
         <span class="chip">${game.n + 1} / ${game.len}</span>
       </div>
-      ${boss ? bossBarHtml() : `<div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>`}
+      ${boss ? bossBarHtml() : game.scene && scenesMod && advMod ? `<div id="scene">${scenesMod.sceneHtml(sceneOpts())}</div>`
+        : `<div class="meter"><span>${th.meterIcon} ${th.meter}</span><span class="bar"><i id="bar" style="width:${pct}%"></i></span></div>`}
       <div class="card question ${game.q.wordy ? 'wordy' : ''}">${game.q.prompt}</div>
       ${q.spell ? `<div class="row-actions"><button class="btn" id="checkText">Check ✓</button></div>`
       : q.order ? `<div class="row-actions"><button class="btn" id="checkOrder" disabled>Check ✓</button></div>`
@@ -1967,7 +1992,7 @@ function press(k) {
 
 // bring a missed question back a few questions later (in the Daily Quest only once, so the mix stays mixed)
 function pushRetry() {
-  bossReact(false);
+  bossReact(false); sceneStep('miss');
   if (game.slots && game.q.retried) return;
   game.q.retried = true;
   game.retry.push({ q: game.q, at: game.n + 3 });
@@ -1977,6 +2002,7 @@ function pushRetry() {
 function answeredRight(p, th) {
   game.locked = true;
   if (game.tries === 1) { record(p, game.q.key, true); game.firstTry++; bossReact(true); }
+  sceneStep(game.tries === 1 ? 'gold' : 'plain');
   const fb = document.getElementById('fb');
   fb.className = 'feedback good'; fb.textContent = pick(th.cheers) + ' ' + th.pointIcon;
   sfx.good(); save();
@@ -2010,7 +2036,7 @@ function choose(i) {
     $app.querySelectorAll('[data-c]').forEach((b, j) => { if (game.q.choices[j].correct) b.classList.add('good'); });
     fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(String(game.q.answer).replace(/[.!?]$/, ''))}</b>. You'll see this one again!`;
     hint.innerHTML = why + game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
-    document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
+    document.getElementById('next').onclick = afterReveal;
   }
   revealHint();
 }
@@ -2040,7 +2066,7 @@ function judge(correct, ui) {
     fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${esc(String(game.q.answer).replace(/[.!?]$/, ''))}</b>. You'll see this one again!`;
     if (ui.reveal) ui.reveal();
     hint.innerHTML = game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
-    document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
+    document.getElementById('next').onclick = afterReveal;
   }
   revealHint();
 }
@@ -2100,7 +2126,7 @@ function check() {
     fb.className = 'feedback'; fb.innerHTML = `The answer is <b>${game.q.answer}</b>. You'll see this one again!`;
     ans.textContent = game.q.answer; ans.className = 'answer-box good';
     hint.innerHTML = game.q.hint(true) + `<button class="btn" id="next" style="margin-top:14px">Next →</button>`;
-    document.getElementById('next').onclick = () => { game.n++; nextQuestion(); };
+    document.getElementById('next').onclick = afterReveal;
   }
   revealHint();
 }
@@ -2285,14 +2311,18 @@ function slotGame(extra) {
     queue: null, qi: 0, started: Date.now() }, extra);
 }
 const slotMaker = (subject, mid) => subject === 'math' ? mathMaker(mid) : bankMaker(mid);
-function startStop(i) {
+async function startStop(i) {
   const p = me(), adv = ensureAdventure(p), s = adv.stops[i];
   if (!s || i > adv.stop || adv.picking) return goHome();
   typingStop = null; pendingHop = null;
   if (s.subject === 'typing') { typingStop = i; return startTyping(s.missionId); }
+  const rs = renderSeq;
+  await Promise.all([loadScenesMod(), loadAdventureMod()]);
+  if (rs !== renderSeq || me() !== p) return;   // she went somewhere else while the games loaded
   const make = slotMaker(s.subject, s.missionId);
   game = slotGame({ missionId: s.missionId, subject: s.subject, adv: { kind: 'stop', i }, len: AR.STOP_LEN,
-    slots: Array.from({ length: AR.STOP_LEN }, () => ({ subject: s.subject, mid: s.missionId, make })) });
+    slots: Array.from({ length: AR.STOP_LEN }, () => ({ subject: s.subject, mid: s.missionId, make })),
+    scene: scenesMod && advMod ? AR.sceneFor(i) : null, moves: [] });
   nextQuestion();
 }
 async function startBoss() {
@@ -2406,8 +2436,10 @@ async function showMap(opts = {}) {
   document.getElementById('switchP').onclick = showProfiles;
   document.getElementById('grown').onclick = () => showParentGate(showParents, showMap);
   const el = document.getElementById('advMap'), seq = renderSeq;
-  const stops = adv.stops.map(s => s && { icon: (SUBJECTS[s.subject] || {}).icon || '🎯', name: (SUBJECTS[s.subject] || {}).name || s.subject, stars: s.stars });
-  const mod = await loadAdventureMod();
+  const [mod, scn] = await Promise.all([loadAdventureMod(), loadScenesMod()]);
+  // a finished stop leaves a trophy of its game (typing stops have no game)
+  const stops = adv.stops.map((s, i) => s && { icon: (SUBJECTS[s.subject] || {}).icon || '🎯', name: (SUBJECTS[s.subject] || {}).name || s.subject, stars: s.stars,
+    trophy: scn && s.subject !== 'typing' && i < adv.stop ? scn.trophySvg(AR.sceneFor(i), adv.world, AR.trophyGold(s.stars)) : '' });
   if (seq !== renderSeq) return;   // she left the map while the drawing loaded
   const hop = pendingHop; pendingHop = null;
   if (mod) {
